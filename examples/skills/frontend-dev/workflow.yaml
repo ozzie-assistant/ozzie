@@ -1,0 +1,34 @@
+vars:
+  task:
+    description: The frontend task to implement
+    required: true
+  framework:
+    description: Frontend framework to use
+    default: react
+
+steps:
+  - id: component
+    title: Component
+    instruction: >
+      Design and implement the UI component. Follow the project's component patterns,
+      ensure proper prop types, state management, and accessibility (ARIA attributes,
+      keyboard navigation). Keep components focused and composable.
+    tools: [ read_file, write_file ]
+
+  - id: style
+    title: Style
+    instruction: >
+      Add styles for the component. Ensure responsive design across breakpoints,
+      consistent spacing and typography, and adherence to the project's design system.
+      Handle dark mode if applicable.
+    tools: [ read_file, write_file ]
+    needs: [ component ]
+
+  - id: test
+    title: Test
+    instruction: >
+      Write unit tests and snapshot tests for the component. Test user interactions,
+      conditional rendering, and edge cases. Verify accessibility with automated checks.
+      Run the test suite to confirm everything passes.
+    tools: [ read_file, write_file, run_command ]
+    needs: [ style ]

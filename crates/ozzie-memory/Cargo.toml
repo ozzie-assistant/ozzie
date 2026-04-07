@@ -1,0 +1,23 @@
+[package]
+name = "ozzie-memory"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ozzie Agent OS — semantic memory library (SQLite + FTS5 + cosine)"
+
+[dependencies]
+ozzie-core = { workspace = true }
+ozzie-utils = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

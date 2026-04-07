@@ -1,0 +1,12 @@
+[package]
+name = "ozzie-protocol"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ozzie Agent OS — WebSocket protocol types"
+
+[dependencies]
+ozzie-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

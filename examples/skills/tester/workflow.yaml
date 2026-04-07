@@ -1,0 +1,34 @@
+vars:
+  scope:
+    description: The code scope to test (package, feature, or file path)
+    required: true
+  type:
+    description: Type of tests to write (unit, integration, e2e)
+    default: unit
+
+steps:
+  - id: plan
+    title: Plan
+    instruction: >
+      Analyze the target code to identify test cases. Map out the testing strategy:
+      which functions to test, what inputs and expected outputs to use, which error
+      paths to cover. List the test cases with brief descriptions.
+    tools: [ read_file ]
+
+  - id: write
+    title: Write
+    instruction: >
+      Write the test code following the project's testing conventions. Use table-driven
+      tests where appropriate. Cover happy paths, error cases, boundary conditions, and
+      edge cases from the plan. Use clear test names that describe the scenario.
+    tools: [ read_file, write_file ]
+    needs: [ plan ]
+
+  - id: run
+    title: Run
+    instruction: >
+      Execute the tests and analyze the results. If tests fail, diagnose the issue —
+      determine whether the test or the implementation is wrong. Report a summary:
+      total tests, passed, failed, and any issues found.
+    tools: [ run_command ]
+    needs: [ write ]

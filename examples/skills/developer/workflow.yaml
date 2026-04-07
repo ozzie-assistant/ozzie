@@ -1,0 +1,50 @@
+vars:
+  task:
+    description: The feature, bug fix, or change to implement
+    required: true
+  stack:
+    description: Target stack (backend, frontend, fullstack)
+    default: fullstack
+
+steps:
+  - id: analyze
+    title: Analyze Requirements
+    instruction: >
+      Understand the task requirements. Produce a functional specification with user
+      stories and acceptance criteria. Identify what parts of the codebase are affected.
+    tools: [ read_file, search ]
+
+  - id: design
+    title: Design Solution
+    instruction: >
+      Based on the analysis, design the solution. Choose appropriate patterns, identify
+      interfaces to implement, and document key design decisions. Keep the design minimal
+      and aligned with existing conventions.
+    tools: [ read_file, search ]
+    needs: [ analyze ]
+
+  - id: implement
+    title: Implement
+    instruction: >
+      Implement the designed solution. For backend work, follow the backend-dev approach.
+      For frontend work, follow the frontend-dev approach. Write clean, idiomatic code
+      with proper error handling.
+    tools: [ read_file, write_file, run_command ]
+    needs: [ design ]
+
+  - id: test
+    title: Test
+    instruction: >
+      Ensure comprehensive test coverage. Write unit tests for new code, verify edge
+      cases from the analysis, and run the full test suite to catch regressions.
+    tools: [ read_file, write_file, run_command ]
+    needs: [ implement ]
+
+  - id: review
+    title: Review
+    instruction: >
+      Inspect the deliverables. Check code quality, test coverage, spec conformity,
+      and security. If issues are found, address them. Produce a final status report
+      with verdict.
+    tools: [ read_file, search, run_command ]
+    needs: [ test ]

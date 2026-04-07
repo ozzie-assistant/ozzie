@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "ozzie-dev": {
+            "type": "stdio",
+            "command": "./build/ozzie",
+            "args": ["mcp-serve", "--config", "./configs/config.dev.jsonc"],
+            "env": {
+                "OZZIE_PATH": "./build/ozzie-home"
+            }
+        }
+    }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "ozzie-file-bridge"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ozzie Agent OS — file connector bridge (JSONL I/O via JSON-RPC)"
+
+[dependencies]
+ozzie-client = { workspace = true }
+ozzie-protocol = { workspace = true }
+ozzie-types = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[[bin]]
+name = "ozzie-file-bridge"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"

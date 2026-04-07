@@ -1,0 +1,34 @@
+vars:
+  task:
+    description: The task or project to coordinate
+    required: true
+  team_context:
+    description: Additional context about the team, ongoing work, or constraints
+
+steps:
+  - id: triage
+    title: Triage
+    instruction: >
+      Analyze the task to assess its scope, complexity, and priority. Identify technical
+      risks, unknowns, and dependencies on other systems or teams. Classify the effort
+      size (S/M/L/XL) and flag any blockers.
+    tools: [ read_file, search ]
+
+  - id: plan
+    title: Plan
+    instruction: >
+      Break the task into concrete sub-tasks that can be assigned to team roles
+      (analyst, architect, backend-dev, frontend-dev, tester, devsecops, qa).
+      Define the execution order and dependencies between sub-tasks. Each sub-task
+      should have a clear definition of done.
+    tools: [ read_file ]
+    needs: [ triage ]
+
+  - id: review
+    title: Review
+    instruction: >
+      Review the deliverables against the original task requirements. Check for completeness,
+      consistency across components, and adherence to the plan. Identify gaps, integration
+      issues, or quality concerns. Produce a final status report.
+    tools: [ read_file, search ]
+    needs: [ plan ]

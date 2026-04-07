@@ -1,0 +1,43 @@
+vars:
+  target:
+    description: The service or application to deploy
+    required: true
+  environment:
+    description: Target deployment environment
+    default: staging
+
+steps:
+  - id: security
+    title: Security Audit
+    instruction: >
+      Perform a security audit. Check for OWASP top-10 vulnerabilities, scan dependencies
+      for known CVEs, verify no secrets are hardcoded, and review access controls.
+      Produce a security report with findings and severity ratings.
+    tools: [ read_file, run_command ]
+
+  - id: infra
+    title: Infrastructure
+    instruction: >
+      Prepare the infrastructure for deployment. Review and update Dockerfiles, Kubernetes
+      manifests, or infrastructure-as-code templates. Ensure resource limits, health checks,
+      and networking are properly configured for the target environment.
+    tools: [ read_file, run_command ]
+    needs: [ security ]
+
+  - id: deploy
+    title: Deploy
+    instruction: >
+      Execute the deployment to the target environment. Apply the infrastructure changes,
+      deploy the application, and verify the rollout succeeds. If deployment fails,
+      report the error and suggest rollback steps.
+    tools: [ run_command ]
+    needs: [ infra ]
+
+  - id: monitor
+    title: Monitor
+    instruction: >
+      Verify the deployment is healthy. Check application logs, health endpoints, and metrics.
+      Configure or verify alerting rules for error rates, latency, and resource usage.
+      Report the deployment status and any anomalies.
+    tools: [ read_file, run_command ]
+    needs: [ deploy ]

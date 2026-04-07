@@ -1,0 +1,207 @@
+{
+  "openrpc": "1.3.0",
+  "info": {
+    "title": "Ozzie Agent OS",
+    "description": "WebSocket JSON-RPC 2.0 protocol for the Ozzie agent gateway",
+    "version": "2.0.0",
+    "license": { "name": "MIT" }
+  },
+  "methods": [
+    {
+      "name": "open_session",
+      "summary": "Create or resume a session",
+      "params": [
+        { "name": "session_id", "schema": { "type": "string" }, "required": false },
+        { "name": "working_dir", "schema": { "type": "string" }, "required": false },
+        { "name": "language", "schema": { "type": "string" }, "required": false },
+        { "name": "model", "schema": { "type": "string" }, "required": false }
+      ],
+      "result": {
+        "name": "SessionResult",
+        "schema": { "$ref": "#/components/schemas/SessionResult" }
+      }
+    },
+    {
+      "name": "send_message",
+      "summary": "Send a user message to the agent",
+      "params": [
+        { "name": "session_id", "schema": { "type": "string" }, "required": true },
+        { "name": "text", "schema": { "type": "string" }, "required": true }
+      ],
+      "result": {
+        "name": "AcceptedResult",
+        "schema": { "$ref": "#/components/schemas/AcceptedResult" }
+      }
+    },
+    {
+      "name": "load_messages",
+      "summary": "Load conversation history",
+      "params": [
+        { "name": "session_id", "schema": { "type": "string" }, "required": true },
+        { "name": "limit", "schema": { "type": "integer", "default": 10 }, "required": false }
+      ],
+      "result": {
+        "name": "MessagesResult",
+        "schema": { "$ref": "#/components/schemas/MessagesResult" }
+      }
+    },
+    {
+      "name": "accept_all_tools",
+      "summary": "Auto-approve all dangerous tools for this session",
+      "params": [
+        { "name": "session_id", "schema": { "type": "string" }, "required": true }
+      ],
+      "result": {
+        "name": "AcceptedResult",
+        "schema": { "$ref": "#/components/schemas/AcceptedResult" }
+      }
+    },
+    {
+      "name": "prompt_response",
+      "summary": "Respond to a prompt request",
+      "params": [
+        { "name": "token", "schema": { "type": "string" }, "required": true },
+        { "name": "value", "schema": { "type": "string" }, "required": false },
+        { "name": "text", "schema": { "type": "string" }, "required": false }
+      ],
+      "result": {
+        "name": "AcceptedResult",
+        "schema": { "$ref": "#/components/schemas/AcceptedResult" }
+      }
+    },
+    {
+      "name": "cancel_session",
+      "summary": "Cancel the active ReactLoop for a session",
+      "params": [
+        { "name": "session_id", "schema": { "type": "string" }, "required": true }
+      ],
+      "result": {
+        "name": "CancelledResult",
+        "schema": { "$ref": "#/components/schemas/CancelledResult" }
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "SessionResult": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "root_dir": { "type": "string" }
+        },
+        "required": ["session_id"]
+      },
+      "AcceptedResult": {
+        "type": "object",
+        "properties": {
+          "accepted": { "type": "boolean" }
+        },
+        "required": ["accepted"]
+      },
+      "CancelledResult": {
+        "type": "object",
+        "properties": {
+          "cancelled": { "type": "boolean" }
+        },
+        "required": ["cancelled"]
+      },
+      "MessagesResult": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MessagePayload" }
+          }
+        },
+        "required": ["messages"]
+      },
+      "MessagePayload": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant", "system", "tool"] },
+          "content": { "type": "string" }
+        },
+        "required": ["role", "content"]
+      },
+      "PromptOption": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string" },
+          "label": { "type": "string" }
+        },
+        "required": ["value", "label"]
+      },
+      "AssistantStreamNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "phase": { "type": "string", "enum": ["start", "delta", "end"] },
+          "content": { "type": "string" },
+          "index": { "type": "integer" }
+        },
+        "required": ["phase", "content", "index"]
+      },
+      "AssistantMessageNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "content": { "type": "string" },
+          "error": { "type": "string" }
+        },
+        "required": ["content"]
+      },
+      "ToolCallNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "call_id": { "type": "string" },
+          "tool": { "type": "string" },
+          "arguments": { "type": "string" }
+        },
+        "required": ["call_id", "tool", "arguments"]
+      },
+      "ToolResultNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "call_id": { "type": "string" },
+          "tool": { "type": "string" },
+          "result": { "type": "string" },
+          "is_error": { "type": "boolean" }
+        },
+        "required": ["call_id", "tool", "result", "is_error"]
+      },
+      "PromptRequestNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "prompt_type": { "type": "string", "enum": ["select", "confirm", "text"] },
+          "label": { "type": "string" },
+          "token": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PromptOption" }
+          }
+        },
+        "required": ["prompt_type", "label", "token"]
+      },
+      "AgentCancelledNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "required": ["reason"]
+      },
+      "AgentYieldedNotification": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "reason": { "type": "string", "enum": ["done", "waiting", "checkpoint"] },
+          "resume_on": { "type": "string" }
+        },
+        "required": ["reason"]
+      }
+    }
+  }
+}

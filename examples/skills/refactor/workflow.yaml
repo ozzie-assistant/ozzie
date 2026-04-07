@@ -1,0 +1,34 @@
+vars:
+  target:
+    description: The code to refactor (file, package, or pattern to address)
+    required: true
+  goal:
+    description: The refactoring goal (e.g., extract interface, reduce duplication, improve naming)
+
+steps:
+  - id: identify
+    title: Identify
+    instruction: >
+      Analyze the target code to identify code smells and improvement opportunities.
+      Map out the current structure: dependencies, callers, tests.
+      Assess the refactoring risk and produce a plan listing each transformation with its rationale.
+    tools: [ read_file, search ]
+
+  - id: transform
+    title: Transform
+    instruction: >
+      Apply the planned refactoring transformations one at a time.
+      Keep each change minimal and reversible.
+      Preserve external behavior — rename, extract, inline, or restructure without changing semantics.
+      Update all callers and references.
+    tools: [ read_file, write_file, search ]
+    needs: [ identify ]
+
+  - id: verify
+    title: Verify
+    instruction: >
+      Run the build, linter, and test suite to verify the refactoring introduced no regressions.
+      If anything fails, diagnose whether the refactoring broke it or it was pre-existing.
+      Report: changes made, tests passed/failed, any remaining issues.
+    tools: [ run_command ]
+    needs: [ transform ]

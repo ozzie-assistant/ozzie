@@ -1,0 +1,33 @@
+vars:
+  task:
+    description: The backend task to implement
+    required: true
+  language:
+    description: Programming language to use
+    default: go
+
+steps:
+  - id: analyze
+    title: Analyze
+    instruction: >
+      Understand the task requirements. Explore the existing codebase to identify files
+      to modify, interfaces to implement, and dependencies involved. Produce a short
+      implementation plan listing the files and changes needed.
+    tools: [ read_file ]
+
+  - id: implement
+    title: Implement
+    instruction: >
+      Write the implementation code following the project's conventions and style.
+      Keep changes minimal and focused. Use proper error handling and follow idiomatic
+      patterns for the target language.
+    tools: [ read_file, write_file ]
+    needs: [ analyze ]
+
+  - id: test
+    title: Test
+    instruction: >
+      Write unit tests for the new code. Cover the happy path, error cases, and edge
+      cases identified during analysis. Run the tests to verify they pass.
+    tools: [ read_file, write_file, run_command ]
+    needs: [ implement ]

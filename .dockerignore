@@ -1,0 +1,16 @@
+target/
+build/
+dist/
+.git/
+.github/
+.claude/
+*.md
+*.test
+.env
+.env.*
+configs/
+tests/
+dev_home*/
+dev_working_dir/
+rust_http_server/
+t09-skill*/

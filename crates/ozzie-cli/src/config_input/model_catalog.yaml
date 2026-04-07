@@ -1,0 +1,108 @@
+# Model catalog — embedded at compile time via include_str!
+#
+# Sources (April 2026):
+# - Anthropic: https://platform.claude.com/docs/en/about-claude/models/overview
+# - OpenAI: https://platform.openai.com/docs/models
+# - Gemini: https://ai.google.dev/gemini-api/docs/models
+# - Mistral: https://mistral.ai/news/mistral-large
+# - Groq: https://console.groq.com/docs/models
+# - xAI: https://docs.x.ai/developers/models
+
+anthropic:
+  default: "claude-sonnet-4-20250514"
+  models:
+    - name: "claude-sonnet-4-20250514"
+      context_window: 200000
+      capabilities: [thinking, vision, tool_use, coding, writing, long_context]
+    - name: "claude-opus-4-20250514"
+      context_window: 1000000
+      capabilities: [thinking, vision, tool_use, coding, writing, long_context]
+    - name: "claude-haiku-4-20250506"
+      context_window: 200000
+      capabilities: [vision, tool_use, coding, fast, cheap]
+
+openai:
+  default: "gpt-4o"
+  models:
+    - name: "gpt-4o"
+      context_window: 128000
+      capabilities: [vision, tool_use, coding, writing, long_context]
+    - name: "gpt-4o-mini"
+      context_window: 128000
+      capabilities: [vision, tool_use, coding, fast, cheap]
+    - name: "o3"
+      context_window: 200000
+      capabilities: [thinking, tool_use, coding, writing, long_context]
+
+gemini:
+  default: "gemini-2.5-flash"
+  models:
+    - name: "gemini-2.5-flash"
+      context_window: 1048576
+      capabilities: [vision, tool_use, coding, fast, cheap, long_context]
+    - name: "gemini-2.5-pro"
+      context_window: 1048576
+      capabilities: [vision, tool_use, coding, writing, thinking, long_context]
+
+mistral:
+  default: "mistral-large-latest"
+  models:
+    - name: "mistral-large-latest"
+      context_window: 256000
+      capabilities: [tool_use, coding, writing, long_context]
+    - name: "mistral-medium-latest"
+      context_window: 128000
+      capabilities: [tool_use, coding, writing]
+    - name: "mistral-small-latest"
+      context_window: 128000
+      capabilities: [tool_use, fast, cheap]
+
+groq:
+  default: "qwen/qwen3-32b"
+  models:
+    - name: "qwen/qwen3-32b"
+      context_window: 131072
+      capabilities: [tool_use, coding, writing, fast]
+    - name: "llama-3.3-70b-versatile"
+      context_window: 128000
+      capabilities: [tool_use, coding, fast, long_context]
+    - name: "llama-3.1-8b-instant"
+      context_window: 131072
+      capabilities: [tool_use, coding, fast]
+    - name: "deepseek-r1-distill-llama-70b"
+      context_window: 128000
+      capabilities: [thinking, coding, fast]
+
+xai:
+  default: "grok-3-mini-fast"
+  models:
+    - name: "grok-3-mini-fast"
+      context_window: 131072
+      capabilities: [tool_use, coding, fast, long_context]
+    - name: "grok-3-mini"
+      context_window: 131072
+      capabilities: [tool_use, coding, fast, long_context]
+    - name: "grok-4-fast"
+      context_window: 256000
+      capabilities: [tool_use, coding, writing, long_context]
+    - name: "grok-4"
+      context_window: 256000
+      capabilities: [tool_use, coding, writing, long_context]
+
+# Ollama context_window = native model window.
+# Actual effective window depends on server's num_ctx (probed via /api/show).
+ollama:
+  default: "llama3.1:8b"
+  models:
+    - name: "llama3.1:8b"
+      context_window: 131072
+      capabilities: [coding, writing]
+    - name: "qwen2.5-coder:7b"
+      context_window: 131072
+      capabilities: [coding, fast]
+    - name: "deepseek-r1:8b"
+      context_window: 131072
+      capabilities: [thinking, coding]
+    - name: "mistral:7b"
+      context_window: 32768
+      capabilities: [coding, writing, fast]

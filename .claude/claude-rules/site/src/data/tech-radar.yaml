@@ -1,0 +1,60 @@
+entries:
+  # ── Adopt ────────────────────────────────────────────────
+  - name: context7
+    type: MCP
+    ring: adopt
+    description: Fetches up-to-date library documentation from source. Replaces web search for versioned libraries (Leptos, Tokio…).
+
+  # ── Trial ────────────────────────────────────────────────
+  - name: LSP
+    type: Plugin
+    ring: trial
+    description: Language server integration — type info, diagnostics, cross-file navigation on large codebases.
+    limitation: LSP server can fall out of sync after large refactors. Restart the server to recover.
+
+  - name: RTK
+    type: Hook
+    ring: trial
+    description: CLI proxy that filters command output to reduce token consumption on repetitive dev operations.
+    limitation: Over-filtering on some commands causes Claude to rerun them differently, negating the savings.
+
+  # ── Assess ───────────────────────────────────────────────
+  - name: Serena
+    type: MCP
+    ring: assess
+    description: Symbol-aware code intelligence via LSP as MCP tools (find_symbol, insert_after_symbol…). Potential replacement for the LSP plugin.
+    link: https://github.com/oraios/serena
+
+  - name: Playwright
+    type: MCP
+    ring: assess
+    description: Browser automation — navigation, clicks, screenshots, network interception. Cross-browser, test-oriented.
+    link: https://github.com/microsoft/playwright
+
+  - name: Chrome DevTools
+    type: MCP
+    ring: assess
+    description: Low-level browser access via CDP — console logs, network inspection, performance tracing. Complements Playwright for debugging.
+    link: https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+  - name: markitdown
+    type: MCP
+    ring: assess
+    description: Converts PDF, Word, Excel, HTML, images to Markdown for LLM consumption.
+    link: https://github.com/microsoft/markitdown
+
+  - name: github
+    type: MCP
+    ring: assess
+    description: PR management and issue tracking from Claude. Caution — actions are visible to others.
+
+  - name: postgres / mongodb
+    type: MCP
+    ring: assess
+    description: Direct database queries. Useful for debugging and migration validation. Read-only access recommended.
+
+  # ── Hold ─────────────────────────────────────────────────
+  - name: sequential-thinking
+    type: MCP
+    ring: hold
+    description: Forces step-by-step decomposition. Sonnet and Opus already do this natively — adds token overhead with no observed benefit.

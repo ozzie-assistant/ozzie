@@ -1,0 +1,37 @@
+# Build
+build/
+bin/
+.bin/
+dev_home/
+dev_home_bis/
+workbench/
+dev_working_dir/
+e2e/target/
+e2e/.bin/
+e2e/reports/**/*.md
+tests/reports/
+local-memo
+
+target/
+tmp/
+
+# Environment
+.env
+.env.*
+.config.jsonc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+vendor/
+
+# Debug
+__debug_bin*

@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: linux-amd64
+            can_run: true
+            smoke_docker: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            name: linux-arm64
+            can_run: false
+            smoke_docker: false
+          - os: macos-14
+            target: x86_64-apple-darwin
+            name: macos-intel
+            can_run: true
+            smoke_docker: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: macos-arm
+            can_run: true
+            smoke_docker: false
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-amd64
+            can_run: true
+            smoke_docker: false
+
+    runs-on: ${{ matrix.os }}
+    name: quality (${{ matrix.name }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # musl cross-compilation deps (Linux only)
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          # arm64 cross-compiler
+          if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            mkdir -p .cargo
+            cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-musl]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+          fi
+
+      - name: Check
+        run: cargo check --release --workspace --target ${{ matrix.target }}
+
+      - name: Clippy
+        run: cargo clippy --release --workspace --target ${{ matrix.target }} -- -D warnings
+
+      # Tests run on native target only (cross-compiled targets can't execute)
+      - name: Test
+        if: matrix.can_run
+        run: cargo test --release --workspace
+
+      # ── Smoke tests ──
+
+      # Build the actual binary for smoke testing
+      - name: Build binary
+        if: matrix.can_run || matrix.smoke_docker
+        run: cargo build --release --package ozzie-cli --target ${{ matrix.target }}
+
+      # Direct binary smoke test (native targets)
+      - name: Smoke test — binary
+        if: matrix.can_run
+        shell: bash
+        run: |
+          BINARY="target/${{ matrix.target }}/release/ozzie"
+          [[ "${{ runner.os }}" == "Windows" ]] && BINARY="${BINARY}.exe"
+          echo "::group::ozzie --help"
+          "$BINARY" --help
+          echo "::endgroup::"
+          echo "::group::ozzie status (expect connection refused)"
+          "$BINARY" status 2>&1 || true
+          echo "::endgroup::"
+
+      # Docker smoke test (linux-amd64 only — no push, just verify it boots)
+      - name: Smoke test — Docker
+        if: matrix.smoke_docker
+        run: |
+          cp target/${{ matrix.target }}/release/ozzie ozzie-binary
+          docker build --build-arg BINARY=ozzie-binary -t ozzie:smoke .
+          rm ozzie-binary
+          echo "::group::docker run ozzie --help"
+          docker run --rm ozzie:smoke --help
+          echo "::endgroup::"
+          echo "::group::docker run ozzie status"
+          docker run --rm ozzie:smoke status 2>&1 || true
+          echo "::endgroup::"

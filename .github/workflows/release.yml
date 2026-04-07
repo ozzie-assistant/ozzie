@@ -1,0 +1,238 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  IMAGE: ghcr.io/dohr-michael/ozzie
+  # Injected into build.rs → ozzie --version
+  OZZIE_VERSION: ${{ github.ref_name }}
+
+jobs:
+  # ── Quality gates (all targets) ──
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: linux-amd64
+            artifact: ozzie
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            name: linux-arm64
+            artifact: ozzie
+          - os: macos-14
+            target: x86_64-apple-darwin
+            name: macos-intel
+            artifact: ozzie
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: macos-arm
+            artifact: ozzie
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-amd64
+            artifact: ozzie.exe
+
+    runs-on: ${{ matrix.os }}
+    name: build (${{ matrix.name }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      # musl cross-compilation deps (Linux only)
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            mkdir -p .cargo
+            cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-musl]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+          fi
+
+      - name: Check
+        run: cargo check --release --workspace --target ${{ matrix.target }}
+
+      - name: Clippy
+        run: cargo clippy --release --workspace --target ${{ matrix.target }} -- -D warnings
+
+      - name: Test
+        if: |
+          matrix.target == 'x86_64-unknown-linux-musl' ||
+          matrix.target == 'x86_64-apple-darwin' ||
+          matrix.target == 'aarch64-apple-darwin' ||
+          matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --release --workspace
+
+      - name: Build release binary
+        run: cargo build --release --package ozzie-cli --target ${{ matrix.target }}
+
+      - name: Strip binary (unix)
+        if: runner.os != 'Windows'
+        run: |
+          BINARY="target/${{ matrix.target }}/release/${{ matrix.artifact }}"
+          if [[ "${{ matrix.target }}" == "aarch64"* && "${{ runner.os }}" == "Linux" ]]; then
+            aarch64-linux-gnu-strip "$BINARY"
+          else
+            strip "$BINARY"
+          fi
+
+      - name: Package binary
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          BINARY="target/${{ matrix.target }}/release/${{ matrix.artifact }}"
+          ARCHIVE="ozzie-${VERSION}-${{ matrix.name }}"
+          mkdir -p "dist/${ARCHIVE}"
+          cp "$BINARY" "dist/${ARCHIVE}/"
+          cd dist
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            7z a "${ARCHIVE}.zip" "${ARCHIVE}/"
+          else
+            tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}/"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.name }}
+          path: dist/ozzie-*
+          retention-days: 1
+
+  # ── Docker images (linux binaries only) ──
+  docker:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            binary_artifact: binary-linux-amd64
+            platform: linux/amd64
+          - arch: arm64
+            binary_artifact: binary-linux-arm64
+            platform: linux/arm64
+
+    runs-on: ubuntu-latest
+    name: docker (${{ matrix.arch }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.binary_artifact }}
+          path: dist/
+
+      - name: Extract binary
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          tar xzf dist/ozzie-${VERSION}-linux-${{ matrix.arch }}.tar.gz -C dist/
+          cp dist/ozzie-${VERSION}-linux-${{ matrix.arch }}/ozzie ozzie-binary
+          chmod +x ozzie-binary
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          build-args: BINARY=ozzie-binary
+          tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}-${{ matrix.arch }}
+
+  # ── Multi-arch manifest ──
+  manifest:
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create multi-arch manifests
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker manifest create ${{ env.IMAGE }}:${VERSION} \
+            ${{ env.IMAGE }}:${VERSION}-amd64 \
+            ${{ env.IMAGE }}:${VERSION}-arm64
+          docker manifest push ${{ env.IMAGE }}:${VERSION}
+
+          docker manifest create ${{ env.IMAGE }}:latest \
+            ${{ env.IMAGE }}:${VERSION}-amd64 \
+            ${{ env.IMAGE }}:${VERSION}-arm64
+          docker manifest push ${{ env.IMAGE }}:latest
+
+  # ── GitHub Release with binaries ──
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            echo "changelog=Initial release" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "changelog<<EOF"
+              git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" | grep -v "^- Merge"
+              echo ""
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+          generate_release_notes: true
+          files: artifacts/ozzie-*

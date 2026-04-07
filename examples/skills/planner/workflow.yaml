@@ -1,0 +1,31 @@
+vars:
+  task:
+    description: The task to plan and execute
+    required: true
+
+steps:
+  - id: explore
+    title: Explore Codebase
+    instruction: >
+      Understand the relevant parts of the codebase for the given task. Search for
+      related files, types, and patterns. Identify conventions, dependencies, and
+      potential impact areas. Summarize findings.
+    tools: [ read_file, search ]
+
+  - id: plan
+    title: Build Plan
+    instruction: >
+      Based on the exploration, produce a concrete step-by-step implementation plan.
+      List specific files to create or modify, functions to add or change, and any
+      quality checks to run. Order steps by dependency. Keep the plan minimal.
+    tools: [ read_file ]
+    needs: [ explore ]
+
+  - id: execute
+    title: Execute Plan
+    instruction: >
+      Implement the plan step by step. Make changes, verify each step works by
+      running builds or tests as needed. If a step reveals issues, adapt the
+      remaining approach. Run final quality checks when done.
+    tools: [ read_file, write_file, run_command ]
+    needs: [ plan ]

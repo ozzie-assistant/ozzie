@@ -1,0 +1,203 @@
+{
+  // Ozzie Configuration
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18420
+  },
+  "models": {
+    "default": "claude",
+    "providers": {
+      "claude": {
+        "driver": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+        "auth": {
+          // Reads from ANTHROPIC_API_KEY env var automatically
+          "env_var": "ANTHROPIC_API_KEY"
+        },
+        "max_tokens": 4096,
+        "capabilities": ["thinking", "tool_use", "coding", "vision"]
+      }
+
+      // Resilience example: retry + fallback for self-hosted endpoints
+      //
+      // "local-llm": {
+      //   "driver": "openai",
+      //   "model": "my-model",
+      //   "base_url": "https://llm-api.home.example.com/v1",
+      //   "retry": {
+      //     "max_attempts": 3,       // total attempts (default: 3)
+      //     "initial_delay": "2s",   // base delay before first retry (default: 1s)
+      //     "max_delay": "30s",      // delay cap (default: 30s)
+      //     "multiplier": 2.0        // exponential backoff factor (default: 2.0)
+      //   },
+      //   "fallback": "claude"       // use claude if local-llm's circuit breaker opens
+      // },
+
+      // Overlay example: multi-model setup with specialized actors
+      //
+      // "planner": {
+      //   "driver": "ollama", "model": "mistral-nemo:12b",
+      //   "tags": ["planner"],
+      //   "capabilities": ["thinking", "tool_use"],
+      //   "max_concurrent": 1
+      // },
+      // "coder": {
+      //   "driver": "ollama", "model": "qwen3-coder:7b",
+      //   "tags": ["coder"],
+      //   "capabilities": ["coding", "tool_use"],
+      //   "prompt_prefix": "You are a code specialist. Write clean, tested code. No explanations unless asked.",
+      //   "max_concurrent": 2
+      // },
+      // "writer": {
+      //   "driver": "ollama", "model": "llama3.2:3b",
+      //   "tags": ["writer"],
+      //   "capabilities": ["fast", "writing"],
+      //   "prompt_prefix": "You are a concise technical writer. Draft clear, well-structured text.",
+      //   "max_concurrent": 2
+      // }
+    }
+  },
+  "events": {
+    "buffer_size": 1024,
+    // Log level: "debug" | "info" | "warn" | "error" (default: "info")
+    // Can be overridden by --debug CLI flag (forces "debug")
+    "log_level": "info"
+  },
+  "agent": {
+    // Leave empty to use the built-in Ozzie persona (recommended).
+    // Inspired by Ozzie Isaacs from the Commonwealth Saga:
+    // laid-back genius, explorer, pragmatist, dry wit.
+    "system_prompt": ""
+  },
+  // Semantic memory: vector embeddings for meaning-based retrieval.
+  // Hybrid scoring: 30% keyword + 70% cosine similarity.
+  // Disabled by default — enable and pick a driver below.
+  "embedding": {
+    "enabled": true,
+    //
+    // 	// --- Option A: OpenAI API (recommended for quality) ---
+    // 	"driver": "openai",                // uses OPENAI_API_KEY env var
+    // 	"model": "text-embedding-3-small", // or "text-embedding-3-large"
+    // 	// "dims": 1536,                   // optional dimension override
+    // 	// "auth": { "api_key": "" },      // explicit key (overrides env var)
+    //
+    // 	// --- Option B: Ollama (local, free, no API key) ---
+    "driver": "ollama",
+    "model": "nomic-embed-text",
+    // requires: ollama pull nomic-embed-text
+    "base_url": "http://localhost:11434"
+    //
+    // 	// "queue_size": 100               // async pipeline buffer (default: 100)
+  },
+  "plugins": {
+    // Directory containing WASM plugin subdirectories.
+    // Each subdirectory should have a manifest.jsonc and a .wasm file.
+    // Default: ~/.ozzie/plugins
+    "dir": "",
+    // List of enabled plugin names. Empty = all plugins in dir are loaded.
+    "enabled": [],
+    // Per-plugin authorizations: what Ozzie allows each plugin to access.
+    // Plugins declare capabilities (needs), authorizations grant access.
+    // Deny-by-default: if a plugin requests HTTP but no authorization is set, hosts are empty.
+    "authorizations": {
+      // "web_crawler": {
+      //   "http": { "allowed_hosts": ["*"] }
+      // },
+      // "patch": {
+      //   "filesystem": { "allowed_paths": { ".": "/" }, "read_only": false }
+      // }
+    }
+  },
+  "skills": {
+    // Directories containing skill subdirectories (each with SKILL.md).
+    // Each skill is a directory with:
+    //   SKILL.md       — YAML frontmatter + Markdown instructions (required)
+    //   workflow.yaml   — DAG workflow definition (optional)
+    //   triggers.yaml   — cron/event triggers (optional)
+    //   scripts/        — executable scripts (optional)
+    //   references/     — documentation (optional)
+    //   assets/         — templates, resources (optional)
+    // Default: [~/.ozzie/skills]
+    "dirs": [],
+    // List of enabled skill names. Empty = all skills are loaded.
+    "enabled": []
+  },
+  "tools": {
+    // Dangerous tools that are always auto-approved (no confirmation prompt).
+    // Useful for async tasks where no interactive user is present.
+    // Example: ["cmd", "git"]
+    "allowed_dangerous": []
+  },
+  // External MCP servers: connect to MCP-compatible tool servers.
+  // Tools are auto-discovered and registered with "serverName__toolName" naming.
+  // All MCP tools are marked dangerous by default (external subprocess/endpoint).
+  "mcp": {
+    "servers": {
+      // "github": {
+      //   "transport": "stdio",
+      //   "command": "npx",
+      //   "args": ["-y", "@modelcontextprotocol/server-github"],
+      //   "env": {
+      //     "GITHUB_TOKEN": "${{ .Env.GITHUB_TOKEN }}"
+      //   },
+      //   "dangerous": true,
+      //   "timeout": 30000
+      // }
+    }
+  },
+  // Policies: customize predefined session policies (admin, support, executor, readonly).
+  // Each policy controls tool access, approval mode, persona injection, and concurrency.
+  // "policies": {
+  //   "overrides": {
+  //     "support": {
+  //       "denied_tools": ["run_command", "write_file", "edit_file", "str_replace_editor"],
+  //       "max_concurrent": 1
+  //     },
+  //     "executor": {
+  //       "allowed_tools": ["submit_task", "check_task", "query_memories"],
+  //       "approval_mode": "none"
+  //     }
+  //   }
+  // },
+  // Connectors: external platform integrations (Discord, Slack, etc.).
+  // Each connector bridges messages between the platform and Ozzie's event bus.
+  // Users must be paired (via approve_pairing tool) before they can interact.
+  // "connectors": {
+  //   "discord": {
+  //     "token": "${{ .Env.DISCORD_TOKEN }}",
+  //     "admin_channel": "1234567890"  // channel ID for pairing notifications
+  //   }
+  // },
+  // Sub-agents: user-configured specialized agents exposed as tools.
+  // Each sub-agent becomes a callable tool named "agent_{name}".
+  // The parent agent decides when to delegate; the sub-agent runs a one-shot ReAct loop.
+  // Dangerous tool approvals bubble up to the user (no timeout, blocks until response).
+  // "sub_agents": {
+  //   "code-reviewer": {
+  //     "model": "claude",                          // optional, defaults to models.default
+  //     "persona": "You are a strict code reviewer. Focus on security, correctness, and conventions.",
+  //     "description": "Reviews code for quality, security, and convention issues",
+  //     "tools": ["file_read", "git", "grep", "glob"],
+  //     "context_mode": "task_only"                 // "task_only" (default) | "conversation"
+  //     // "budget": { "max_turns": 20, "max_output_tokens": 8000, "timeout_sec": 120 }
+  //   },
+  //   "researcher": {
+  //     "persona": "Research analyst. Concise, factual, sourced.",
+  //     "description": "Searches the web and synthesizes findings",
+  //     "tools": ["web_search", "web_fetch"],
+  //     "context_mode": "task_only"
+  //   }
+  // },
+  // Layered context: three-tier progressive compression (L0/L1/L2).
+  // Replaces monolithic summarization with BM25-based relevance retrieval.
+  // Disabled by default — enable to reduce token usage by 80-90% on long conversations.
+  "layered_context": {
+    "enabled": false,
+    // Maximum archived conversation chunks to keep per session.
+    "max_archives": 12,
+    // Number of most recent messages to always include (no compression).
+    "max_recent_messages": 24,
+    // Messages per archive chunk.
+    "archive_chunk_size": 8
+  }
+}
