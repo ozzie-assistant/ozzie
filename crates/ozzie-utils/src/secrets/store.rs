@@ -110,9 +110,11 @@ mod tests {
     #[test]
     fn resolve_value_falls_back_to_env() {
         let store = make_store();
-        // HOME is always set in env, never in secret store
-        let result = store.resolve_value("${HOME}");
-        assert!(!result.is_empty());
+        // SAFETY: test is single-threaded, no concurrent env access
+        unsafe { std::env::set_var("OZZIE_TEST_SECRET_FALLBACK", "from_env") };
+        let result = store.resolve_value("${OZZIE_TEST_SECRET_FALLBACK}");
+        assert_eq!(result, "from_env");
+        unsafe { std::env::remove_var("OZZIE_TEST_SECRET_FALLBACK") };
     }
 
     #[test]
