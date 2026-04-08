@@ -1,6 +1,7 @@
 mod ask;
 mod chat;
 mod connector;
+pub(crate) mod daemon;
 mod events;
 mod gateway;
 mod mcp_serve;
@@ -42,6 +43,8 @@ pub enum Command {
     Pairing(pairing::PairingArgs),
     /// Manage connectors (Discord, ...).
     Connector(connector::ConnectorArgs),
+    /// Manage the Ozzie daemon (start, stop, status).
+    Daemon(daemon::DaemonArgs),
 }
 
 /// Launches the interactive REPL (default when no subcommand is given).
@@ -66,5 +69,6 @@ pub async fn run(cmd: Command, config_path: Option<&str>) -> anyhow::Result<()> 
 
         Command::Pairing(args) => pairing::run(args).await,
         Command::Connector(args) => connector::run(args).await,
+        Command::Daemon(args) => daemon::run(args).await,
     }
 }

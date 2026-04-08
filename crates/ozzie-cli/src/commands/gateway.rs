@@ -50,10 +50,18 @@ pub struct GatewayArgs {
     /// Disable authentication (dev mode).
     #[arg(long)]
     insecure: bool,
+
+    /// Run as a background daemon (delegates to `ozzie daemon start`).
+    #[arg(long)]
+    daemon: bool,
 }
 
 /// Starts the gateway server with all infrastructure wired.
 pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Result<()> {
+    if args.daemon {
+        return super::daemon::run(super::daemon::DaemonArgs::start(args.port)).await;
+    }
+
     info!("initializing gateway");
 
     load_dotenv_with_decrypt()?;
@@ -173,6 +181,10 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let _event_logger =
         ozzie_runtime::event_logger::EventLogger::start(logs_path(), bus.clone());
     info!(logs_dir = %logs_path().display(), "event logger started");
+
+    let _heartbeat = ozzie_runtime::heartbeat::Writer::new(ozzie_path().join("heartbeat.json"));
+    _heartbeat.start().await;
+    info!("heartbeat started");
 
     let _cost_tracker = CostTracker::new(
         bus.clone(),
