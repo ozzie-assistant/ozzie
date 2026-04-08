@@ -10,6 +10,7 @@ description = "Ozzie Agent OS — ReAct loop, task runner, sessions"
 ozzie-core = { workspace = true }
 ozzie-utils = { workspace = true }
 ozzie-llm = { path = "../ozzie-llm" }
+anyhow = { workspace = true }
 ozzie-memory = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

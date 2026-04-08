@@ -1,4 +1,5 @@
 pub mod approval;
+pub mod dream;
 pub mod heartbeat;
 pub mod connector;
 pub mod context_compressor;
@@ -22,6 +23,7 @@ pub mod storage;
 pub mod toolset;
 
 pub use approval::EventBusApprovalRequester;
+pub use dream::DreamRunner;
 pub use connector::{ProcessInfo, ProcessSupervisor};
 pub use json_device_store::JsonDeviceStore;
 pub use json_pairing_store::JsonPairingStore;

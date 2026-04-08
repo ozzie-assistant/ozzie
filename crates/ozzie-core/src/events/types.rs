@@ -191,6 +191,15 @@ pub enum EventPayload {
     #[serde(rename = "context.layered")]
     ContextLayered,
 
+    // Dream consolidation
+    #[serde(rename = "dream.completed")]
+    DreamCompleted {
+        sessions_processed: usize,
+        sessions_errored: usize,
+        profile_entries_added: usize,
+        memories_created: usize,
+    },
+
     // Pairing — device
     #[serde(rename = "pairing.request.device")]
     PairingRequestDevice {
@@ -277,6 +286,7 @@ impl EventPayload {
             Self::SkillStepStarted => EventKind::SkillStepStarted,
             Self::SkillStepCompleted => EventKind::SkillStepCompleted,
             Self::ContextLayered => EventKind::ContextLayered,
+            Self::DreamCompleted { .. } => EventKind::DreamCompleted,
             Self::PairingRequestDevice { .. } => EventKind::PairingRequestDevice,
             Self::PairingRequestChat { .. } => EventKind::PairingRequestChat,
             Self::PairingApprovedDevice { .. } => EventKind::PairingApprovedDevice,

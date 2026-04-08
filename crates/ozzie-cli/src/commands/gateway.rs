@@ -180,6 +180,17 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     );
     info!("cost tracker started");
 
+    // Dream consolidation — extracts lasting knowledge from conversations.
+    let dream_runner = Arc::new(ozzie_runtime::DreamRunner::new(
+        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        memory_store.clone() as Arc<dyn ozzie_memory::Store>,
+        provider_registry.default_provider().clone(),
+        &ozzie_path(),
+        bus.clone(),
+    ));
+    dream_runner.start().await;
+    info!("dream consolidation started (12h interval)");
+
     let device_storage = Arc::new(ozzie_runtime::JsonDeviceStore::new(&ozzie_path()));
     let device_approvals = Arc::new(ozzie_gateway::DeviceApprovalCache::new());
     let authenticator = init_auth(&args, device_storage.clone())?;
@@ -214,12 +225,14 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
 
     tokio::select! {
         result = server.serve() => {
+            dream_runner.stop().await;
             mcp_shutdown.shutdown_all().await;
             supervisor.stop_all().await;
             result.map_err(|e| anyhow::anyhow!(e))
         }
         _ = tokio::signal::ctrl_c() => {
             info!("shutting down");
+            dream_runner.stop().await;
             mcp_shutdown.shutdown_all().await;
             supervisor.stop_all().await;
             Ok(())

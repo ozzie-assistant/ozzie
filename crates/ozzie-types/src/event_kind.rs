@@ -76,6 +76,9 @@ pub enum EventKind {
     // Context
     #[serde(rename = "context.layered")]
     ContextLayered,
+    // Dream
+    #[serde(rename = "dream.completed")]
+    DreamCompleted,
     // Pairing
     #[serde(rename = "pairing.request.device")]
     PairingRequestDevice,
@@ -126,6 +129,7 @@ impl EventKind {
             Self::SkillStepStarted => "skill.step.started",
             Self::SkillStepCompleted => "skill.step.completed",
             Self::ContextLayered => "context.layered",
+            Self::DreamCompleted => "dream.completed",
             Self::PairingRequestDevice => "pairing.request.device",
             Self::PairingRequestChat => "pairing.request.chat",
             Self::PairingApprovedDevice => "pairing.approved.device",
