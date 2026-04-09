@@ -248,12 +248,7 @@ impl ReactLoop {
                     if let Some(ref obs) = config.observer {
                         obs.on_pending_drained(&text).await;
                     }
-                    chat_messages.push(ChatMessage {
-                        role: ChatRole::User,
-                        content: text,
-                        tool_calls: Vec::new(),
-                        tool_call_id: None,
-                    });
+                    chat_messages.push(ChatMessage::text(ChatRole::User, text));
                 }
             }
 
@@ -363,7 +358,7 @@ impl ReactLoop {
             // Process tool calls
             chat_messages.push(ChatMessage {
                 role: ChatRole::Assistant,
-                content: response.content.clone(),
+                content: ozzie_types::text_to_parts(&response.content),
                 tool_calls: response.tool_calls.clone(),
                 tool_call_id: None,
             });
@@ -408,7 +403,7 @@ impl ReactLoop {
 
                 chat_messages.push(ChatMessage {
                     role: ChatRole::Tool,
-                    content: result,
+                    content: ozzie_types::text_to_parts(result),
                     tool_calls: Vec::new(),
                     tool_call_id: Some(tc.id.clone()),
                 });
@@ -513,12 +508,7 @@ fn build_chat_messages(instruction: &str, messages: &[Message]) -> Vec<ChatMessa
     let mut chat = Vec::new();
 
     if !instruction.is_empty() {
-        chat.push(ChatMessage {
-            role: ChatRole::System,
-            content: instruction.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        });
+        chat.push(ChatMessage::text(ChatRole::System, instruction));
     }
 
     for msg in messages {
@@ -528,12 +518,7 @@ fn build_chat_messages(instruction: &str, messages: &[Message]) -> Vec<ChatMessa
             "tool" => ChatRole::Tool,
             _ => ChatRole::User,
         };
-        chat.push(ChatMessage {
-            role,
-            content: msg.content.clone(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        });
+        chat.push(ChatMessage::text(role, &msg.content));
     }
 
     chat
@@ -903,7 +888,7 @@ mod tests {
                     let user_msgs: Vec<String> = messages
                         .iter()
                         .filter(|m| m.role == ozzie_llm::ChatRole::User)
-                        .map(|m| m.content.clone())
+                        .map(|m| m.text_content())
                         .collect();
                     *self.second_call_messages.lock().unwrap() = user_msgs;
                     Ok(ChatResponse {

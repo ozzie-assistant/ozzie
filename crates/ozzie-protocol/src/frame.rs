@@ -236,6 +236,7 @@ mod tests {
         let req = Request::SendMessage(SendMessageParams {
             session_id: "sess_1".to_string(),
             text: "hello".to_string(),
+            images: Vec::new(),
         });
         let frame = Frame::from_request("req_1", &req);
         let bytes = frame.to_bytes().unwrap();

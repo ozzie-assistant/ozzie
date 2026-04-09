@@ -31,18 +31,8 @@ pub async fn classify_session(
     let user_content = format_messages(messages);
 
     let chat_messages = vec![
-        ChatMessage {
-            role: ChatRole::System,
-            content: system,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::User,
-            content: user_content,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
+        ChatMessage::text(ChatRole::System, system),
+        ChatMessage::text(ChatRole::User, user_content),
     ];
 
     let response = provider.chat(&chat_messages, &[]).await?;

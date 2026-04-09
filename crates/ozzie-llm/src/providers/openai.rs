@@ -100,7 +100,7 @@ impl OpenAIProvider {
 
                 ApiMessage {
                     role: m.role.to_string(),
-                    content: Some(m.content.clone()),
+                    content: Some(content_parts_to_openai(&m.content)),
                     tool_calls,
                     tool_call_id: m.tool_call_id.clone(),
                 }
@@ -363,6 +363,31 @@ impl Provider for OpenAIProvider {
     }
 }
 
+/// Converts domain content parts to OpenAI `content` field.
+///
+/// Text-only → plain string. Mixed → array of content objects.
+fn content_parts_to_openai(parts: &[ozzie_types::ContentPart]) -> serde_json::Value {
+    let has_images = parts.iter().any(|p| p.is_image());
+    if !has_images {
+        return serde_json::Value::String(ozzie_types::parts_to_text(parts));
+    }
+    let blocks: Vec<serde_json::Value> = parts.iter().filter_map(|p| match p {
+        ozzie_types::ContentPart::Text { text } => Some(serde_json::json!({
+            "type": "text",
+            "text": text,
+        })),
+        ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(serde_json::json!({
+            "type": "image_url",
+            "image_url": {
+                "url": format!("data:{media_type};base64,{data}"),
+            },
+        })),
+        // Unresolved blobs skipped.
+        ozzie_types::ContentPart::Image { .. } => None,
+    }).collect();
+    serde_json::Value::Array(blocks)
+}
+
 // ---- API types ----
 
 #[derive(Serialize)]
@@ -390,7 +415,7 @@ struct StreamOptions {
 struct ApiMessage {
     role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<ApiToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]

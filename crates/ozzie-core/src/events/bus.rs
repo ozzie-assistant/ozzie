@@ -153,9 +153,7 @@ mod tests {
     #[test]
     fn ring_buffer_basic() {
         let mut rb = RingBuffer::new(4);
-        rb.add(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        rb.add(make_event(EventPayload::user_message("hi")));
         rb.add(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
@@ -174,9 +172,7 @@ mod tests {
     fn ring_buffer_wraps() {
         let mut rb = RingBuffer::new(3);
         for _ in 0..5 {
-            rb.add(make_event(EventPayload::UserMessage {
-                text: "hi".to_string(),
-            }));
+            rb.add(make_event(EventPayload::user_message("hi")));
         }
         let events = rb.get(10);
         assert_eq!(events.len(), 3); // only keeps 3
@@ -185,16 +181,12 @@ mod tests {
     #[test]
     fn ring_buffer_filtered() {
         let mut rb = RingBuffer::new(10);
-        rb.add(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        rb.add(make_event(EventPayload::user_message("hi")));
         rb.add(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
         }));
-        rb.add(make_event(EventPayload::UserMessage {
-            text: "bye".to_string(),
-        }));
+        rb.add(make_event(EventPayload::user_message("bye")));
         rb.add(make_event(EventPayload::ToolCall {
             call_id: "tc_1".to_string(),
             tool: "t".to_string(),
@@ -210,9 +202,7 @@ mod tests {
         let bus = Bus::new(64);
         let mut rx = bus.subscribe(&[EventKind::UserMessage.as_str()]);
 
-        bus.publish(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        bus.publish(make_event(EventPayload::user_message("hi")));
         bus.publish(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
@@ -227,9 +217,7 @@ mod tests {
         let bus = Bus::new(64);
         let mut rx = bus.subscribe(&[]);
 
-        bus.publish(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        bus.publish(make_event(EventPayload::user_message("hi")));
         bus.publish(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
@@ -244,9 +232,7 @@ mod tests {
     #[test]
     fn bus_history() {
         let bus = Bus::new(64);
-        bus.publish(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        bus.publish(make_event(EventPayload::user_message("hi")));
         bus.publish(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
@@ -266,16 +252,12 @@ mod tests {
     #[test]
     fn bus_history_filtered() {
         let bus = Bus::new(64);
-        bus.publish(make_event(EventPayload::UserMessage {
-            text: "hi".to_string(),
-        }));
+        bus.publish(make_event(EventPayload::user_message("hi")));
         bus.publish(make_event(EventPayload::AssistantMessage {
             content: "hello".to_string(),
             error: None,
         }));
-        bus.publish(make_event(EventPayload::UserMessage {
-            text: "bye".to_string(),
-        }));
+        bus.publish(make_event(EventPayload::user_message("bye")));
 
         let filtered = bus.history_filtered(10, "user.message");
         assert_eq!(filtered.len(), 2);

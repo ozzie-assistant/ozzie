@@ -23,6 +23,7 @@ pub struct RequestHandler {
     hub: Arc<Hub>,
     permissions: Option<Arc<ToolPermissions>>,
     cancel_fn: Option<CancelSessionFn>,
+    blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
 }
 
 impl RequestHandler {
@@ -37,7 +38,13 @@ impl RequestHandler {
             hub,
             permissions: None,
             cancel_fn: None,
+            blob_store: None,
         }
+    }
+
+    pub fn with_blob_store(mut self, store: Arc<dyn ozzie_core::domain::BlobStore>) -> Self {
+        self.blob_store = Some(store);
+        self
     }
 
     pub fn with_permissions(mut self, permissions: Arc<ToolPermissions>) -> Self {
@@ -70,7 +77,7 @@ impl HubHandler for RequestHandler {
 
         match request {
             Request::OpenSession(p) => self.handle_open_session(client_id, &id, p).await,
-            Request::SendMessage(p) => self.handle_send_message(&id, p),
+            Request::SendMessage(p) => self.handle_send_message(&id, p).await,
             Request::SendConnectorMessage(p) => self.handle_send_connector_message(&id, p),
             Request::LoadMessages(p) => self.handle_load_messages(&id, p).await,
             Request::AcceptAllTools(p) => self.handle_accept_all(&id, p),
@@ -144,14 +151,35 @@ impl RequestHandler {
         )
     }
 
-    fn handle_send_message(
+    async fn handle_send_message(
         &self,
         req_id: &str,
         p: ozzie_types::SendMessageParams,
     ) -> Frame {
+        // Ingest image attachments into blob store, collect refs
+        let images = if p.images.is_empty() {
+            Vec::new()
+        } else {
+            let mut refs = Vec::new();
+            for img in &p.images {
+                match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &img.data) {
+                    Ok(bytes) => {
+                        if let Some(ref store) = self.blob_store {
+                            match store.write(&bytes, &img.media_type).await {
+                                Ok(blob_ref) => refs.push(blob_ref),
+                                Err(e) => tracing::warn!(error = %e, "failed to write blob"),
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!(error = %e, "invalid base64 image data"),
+                }
+            }
+            refs
+        };
+
         self.bus.publish(Event::with_session(
             EventSource::Hub,
-            EventPayload::UserMessage { text: p.text },
+            EventPayload::user_message_with_images(p.text, images),
             &p.session_id,
         ));
 
@@ -311,7 +339,7 @@ mod tests {
 
         let event = rx.try_recv().unwrap();
         match event.payload {
-            EventPayload::UserMessage { text } => assert_eq!(text, "hello"),
+            EventPayload::UserMessage { text, .. } => assert_eq!(text, "hello"),
             other => panic!("expected UserMessage, got {other:?}"),
         }
     }

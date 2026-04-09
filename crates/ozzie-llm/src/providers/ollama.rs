@@ -51,10 +51,16 @@ impl OllamaProvider {
     ) -> OllamaRequest {
         let api_messages: Vec<OllamaMessage> = messages
             .iter()
-            .map(|m| OllamaMessage {
-                role: m.role.to_string(),
-                content: m.content.clone(),
-                tool_calls: if m.tool_calls.is_empty() {
+            .map(|m| {
+                let images: Vec<String> = m.content.iter().filter_map(|p| match p {
+                    ozzie_types::ContentPart::ImageInline { data, .. } => Some(data.clone()),
+                    _ => None,
+                }).collect();
+                OllamaMessage {
+                    role: m.role.to_string(),
+                    content: m.text_content(),
+                    images: if images.is_empty() { None } else { Some(images) },
+                    tool_calls: if m.tool_calls.is_empty() {
                     None
                 } else {
                     Some(
@@ -69,6 +75,7 @@ impl OllamaProvider {
                             .collect(),
                     )
                 },
+                }
             })
             .collect();
 
@@ -275,6 +282,8 @@ struct OllamaRequest {
 struct OllamaMessage {
     role: String,
     content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    images: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<OllamaToolCall>>,
 }

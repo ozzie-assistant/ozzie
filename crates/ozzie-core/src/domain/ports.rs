@@ -392,7 +392,33 @@ pub trait PendingPairings: Send + Sync {
     fn purge_expired(&self);
 }
 
+// ---- Blob Storage Port ----
+
+/// Stores and retrieves binary blobs (images, etc.) by content hash.
+///
+/// Blobs live in `{session_dir}/blobs/{hash}.{ext}`. The store is keyed
+/// by SHA-256 so identical content deduplicates automatically.
+#[async_trait::async_trait]
+pub trait BlobStore: Send + Sync {
+    /// Writes bytes to the store and returns the content-addressed reference.
+    async fn write(&self, bytes: &[u8], media_type: &str) -> Result<ozzie_types::BlobRef, BlobError>;
+    /// Reads the raw bytes for a blob reference.
+    async fn read(&self, blob: &ozzie_types::BlobRef) -> Result<Vec<u8>, BlobError>;
+    /// Returns true if the blob exists in the store.
+    async fn exists(&self, blob: &ozzie_types::BlobRef) -> bool;
+}
+
 // ---- Errors ----
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlobError {
+    #[error("blob not found: {0}")]
+    NotFound(String),
+    #[error("I/O error: {0}")]
+    Io(String),
+    #[error("unsupported media type: {0}")]
+    UnsupportedMediaType(String),
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PairingError {

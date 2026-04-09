@@ -96,36 +96,42 @@ impl AnthropicProvider {
             .filter(|m| m.role != ChatRole::System)
             .map(|m| {
                 if !m.tool_calls.is_empty() {
-                    let mut content = Vec::new();
-                    if !m.content.is_empty() {
-                        content.push(ContentBlock::Text { text: m.content.clone() });
+                    let mut blocks = Vec::new();
+                    let text = m.text_content();
+                    if !text.is_empty() {
+                        blocks.push(ContentBlock::Text { text });
                     }
                     for tc in &m.tool_calls {
-                        content.push(ContentBlock::ToolUse {
+                        blocks.push(ContentBlock::ToolUse {
                             id: tc.id.clone(),
                             name: tc.name.clone(),
                             input: tc.arguments.clone(),
                         });
                     }
-                    ApiMessage { role: m.role.to_string(), content: MessageContent::Blocks(content) }
+                    ApiMessage { role: m.role.to_string(), content: MessageContent::Blocks(blocks) }
                 } else if m.role == ChatRole::Tool {
                     ApiMessage {
                         role: "user".to_string(),
                         content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
                             tool_use_id: m.tool_call_id.clone().unwrap_or_default(),
-                            content: m.content.clone(),
+                            content: m.text_content(),
                         }]),
                     }
                 } else {
-                    ApiMessage { role: m.role.to_string(), content: MessageContent::Text(m.content.clone()) }
+                    let blocks = content_parts_to_blocks(&m.content);
+                    if blocks.len() == 1 && matches!(&blocks[0], ContentBlock::Text { .. }) {
+                        ApiMessage { role: m.role.to_string(), content: MessageContent::Text(m.text_content()) }
+                    } else {
+                        ApiMessage { role: m.role.to_string(), content: MessageContent::Blocks(blocks) }
+                    }
                 }
             })
             .collect();
 
-        let system_text = messages
+        let system_text: String = messages
             .iter()
             .filter(|m| m.role == ChatRole::System)
-            .map(|m| m.content.clone())
+            .map(|m| m.text_content())
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -320,6 +326,25 @@ fn process_stream_event(event: StreamEvent, current_tool_id: &str, model: &str) 
     }
 }
 
+/// Converts domain `ContentPart`s to Anthropic content blocks.
+///
+/// Images are sent as base64 `source` blocks — the caller must have loaded
+/// the blob bytes before calling this (see `BlobStore`).
+fn content_parts_to_blocks(parts: &[ozzie_types::ContentPart]) -> Vec<ContentBlock> {
+    parts.iter().filter_map(|p| match p {
+        ozzie_types::ContentPart::Text { text } => Some(ContentBlock::Text { text: text.clone() }),
+        ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(ContentBlock::Image {
+            source: ImageSource {
+                source_type: "base64".to_string(),
+                media_type: media_type.clone(),
+                data: data.clone(),
+            },
+        }),
+        // Unresolved Image blobs are skipped — call resolve_blobs() first.
+        ozzie_types::ContentPart::Image { .. } => None,
+    }).collect()
+}
+
 // ---- API types ----
 
 #[derive(Serialize)]
@@ -352,6 +377,8 @@ enum MessageContent {
 enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
+    #[serde(rename = "image")]
+    Image { source: ImageSource },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -363,6 +390,14 @@ enum ContentBlock {
         tool_use_id: String,
         content: String,
     },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ImageSource {
+    #[serde(rename = "type")]
+    source_type: String,
+    media_type: String,
+    data: String,
 }
 
 #[derive(Serialize)]

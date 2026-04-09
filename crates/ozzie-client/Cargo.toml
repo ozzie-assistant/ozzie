@@ -8,6 +8,7 @@ description = "Ozzie Agent OS — WebSocket client SDK"
 
 [dependencies]
 ozzie-protocol = { path = "../ozzie-protocol" }
+ozzie-types = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }

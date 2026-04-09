@@ -187,6 +187,25 @@ impl OzzieClient {
         Ok(())
     }
 
+    /// Sends a text message with image attachments in the current session.
+    pub async fn send_message_with_images(
+        &mut self,
+        text: &str,
+        images: Vec<ozzie_types::ImageAttachment>,
+    ) -> Result<(), ClientError> {
+        let session_id = self
+            .session_id
+            .as_deref()
+            .ok_or_else(|| ClientError::Other("no session open".to_string()))?;
+        let params = serde_json::json!({
+            "session_id": session_id,
+            "text": text,
+            "images": images,
+        });
+        self.request("send_message", params).await?;
+        Ok(())
+    }
+
     /// Sends a connector message to the gateway with full identity metadata.
     ///
     /// Unlike `send_message()`, this publishes a `ConnectorMessage` event that

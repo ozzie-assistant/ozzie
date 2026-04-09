@@ -17,11 +17,26 @@ pub struct OpenSessionParams {
     pub model: Option<String>,
 }
 
+/// An image attachment in a `send_message` request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageAttachment {
+    /// Base64-encoded image data.
+    pub data: String,
+    /// MIME type (e.g. "image/png", "image/jpeg").
+    pub media_type: String,
+    /// Optional alt text for accessibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<String>,
+}
+
 /// Parameters for `send_message`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageParams {
     pub session_id: String,
     pub text: String,
+    /// Optional image attachments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageAttachment>,
 }
 
 /// Parameters for `load_messages`.

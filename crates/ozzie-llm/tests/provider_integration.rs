@@ -98,21 +98,11 @@ fn tool_no_args() -> ToolDefinition {
 }
 
 fn user_msg(content: &str) -> ChatMessage {
-    ChatMessage {
-        role: ChatRole::User,
-        content: content.to_string(),
-        tool_calls: vec![],
-        tool_call_id: None,
-    }
+    ChatMessage::text(ChatRole::User, content)
 }
 
 fn system_msg(content: &str) -> ChatMessage {
-    ChatMessage {
-        role: ChatRole::System,
-        content: content.to_string(),
-        tool_calls: vec![],
-        tool_call_id: None,
-    }
+    ChatMessage::text(ChatRole::System, content)
 }
 
 // ============================================================
@@ -557,13 +547,13 @@ async fn test_tool_result_roundtrip(provider: &dyn Provider, label: &str) -> Res
         user_msg("What's the weather in Paris? Use the get_weather tool."),
         ChatMessage {
             role: ChatRole::Assistant,
-            content: String::new(),
+            content: Vec::new(),
             tool_calls: resp1.tool_calls.clone(),
             tool_call_id: None,
         },
         ChatMessage {
             role: ChatRole::Tool,
-            content: r#"{"temperature": 18, "condition": "cloudy"}"#.to_string(),
+            content: ozzie_types::text_to_parts(r#"{"temperature": 18, "condition": "cloudy"}"#),
             tool_calls: vec![],
             tool_call_id: Some(tc.id.clone()),
         },

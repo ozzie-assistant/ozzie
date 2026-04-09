@@ -62,12 +62,7 @@ async fn call_llm(
     provider: &Arc<dyn Provider>,
     prompt: &str,
 ) -> Result<String, ozzie_llm::LlmError> {
-    let messages = vec![ozzie_llm::ChatMessage {
-        role: ozzie_llm::ChatRole::User,
-        content: prompt.to_string(),
-        tool_calls: Vec::new(),
-        tool_call_id: None,
-    }];
+    let messages = vec![ozzie_llm::ChatMessage::text(ozzie_llm::ChatRole::User, prompt)];
 
     let response = provider.chat(&messages, &[]).await?;
     Ok(response.content)

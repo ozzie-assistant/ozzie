@@ -402,9 +402,7 @@ mod tests {
         // Publish some events
         state.bus.publish(ozzie_core::events::Event::new(
             EventSource::Agent,
-            EventPayload::UserMessage {
-                text: "hello".to_string(),
-            },
+            EventPayload::user_message("hello"),
         ));
 
         let server = Server::new(ServerConfig::default(), state);

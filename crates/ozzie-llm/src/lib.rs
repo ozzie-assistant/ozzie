@@ -41,11 +41,29 @@ impl std::fmt::Display for ChatRole {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatRole,
-    pub content: String,
+    /// Content parts (text, images, etc.).
+    pub content: Vec<ozzie_types::ContentPart>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+}
+
+impl ChatMessage {
+    /// Creates a text-only message.
+    pub fn text(role: ChatRole, text: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: ozzie_types::text_to_parts(text),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        }
+    }
+
+    /// Returns the concatenated text content (ignoring non-text parts).
+    pub fn text_content(&self) -> String {
+        ozzie_types::parts_to_text(&self.content)
+    }
 }
 
 /// A tool call requested by the model.

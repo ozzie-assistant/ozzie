@@ -8,6 +8,7 @@ description = "Ozzie Agent OS — LLM providers (Anthropic, Ollama, OpenAI, Gemi
 
 [dependencies]
 ozzie-core = { workspace = true }
+ozzie-types = { workspace = true }
 ozzie-utils = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

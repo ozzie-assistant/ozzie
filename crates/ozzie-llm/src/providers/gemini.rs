@@ -68,7 +68,7 @@ impl GeminiProvider {
                 system_instruction = Some(GeminiContent {
                     role: "user".to_string(),
                     parts: vec![GeminiPart::Text {
-                        text: msg.content.clone(),
+                        text: msg.text_content(),
                     }],
                 });
                 continue;
@@ -79,13 +79,17 @@ impl GeminiProvider {
                 ChatRole::Tool | ChatRole::User | ChatRole::System => "user",
             };
 
-            let mut parts = Vec::new();
-
-            if !msg.content.is_empty() {
-                parts.push(GeminiPart::Text {
-                    text: msg.content.clone(),
-                });
-            }
+            let mut parts: Vec<GeminiPart> = msg.content.iter().filter_map(|p| match p {
+                ozzie_types::ContentPart::Text { text } => Some(GeminiPart::Text { text: text.clone() }),
+                ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(GeminiPart::InlineData {
+                    inline_data: GeminiInlineData {
+                        mime_type: media_type.clone(),
+                        data: data.clone(),
+                    },
+                }),
+                // Unresolved blobs skipped.
+                ozzie_types::ContentPart::Image { .. } => None,
+            }).collect();
 
             for tc in &msg.tool_calls {
                 parts.push(GeminiPart::FunctionCall {
@@ -100,7 +104,7 @@ impl GeminiProvider {
                 parts.push(GeminiPart::FunctionResponse {
                     function_response: GeminiFunctionResponse {
                         name: tc_id.clone(),
-                        response: serde_json::json!({"result": msg.content}),
+                        response: serde_json::json!({"result": msg.text_content()}),
                     },
                 });
             }
@@ -361,6 +365,10 @@ enum GeminiPart {
     Text {
         text: String,
     },
+    InlineData {
+        #[serde(rename = "inlineData")]
+        inline_data: GeminiInlineData,
+    },
     FunctionCall {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCall,
@@ -369,6 +377,13 @@ enum GeminiPart {
         #[serde(rename = "functionResponse")]
         function_response: GeminiFunctionResponse,
     },
+}
+
+#[derive(Serialize, Deserialize)]
+struct GeminiInlineData {
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    data: String,
 }
 
 #[derive(Serialize, Deserialize)]

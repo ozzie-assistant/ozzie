@@ -175,6 +175,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
             .get(&cfg.models.default)
             .and_then(|p| p.context_window),
         user_profile,
+        blob_store: Some(Arc::new(ozzie_runtime::FsBlobStore::new(ozzie_path()))),
     }));
     runner.start();
 

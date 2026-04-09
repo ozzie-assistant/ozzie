@@ -64,6 +64,8 @@ pub struct EventRunnerConfig {
     pub context_window: Option<usize>,
     /// Optional user profile for system prompt injection.
     pub user_profile: Option<UserProfile>,
+    /// Blob store for resolving image references before LLM calls.
+    pub blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
 }
 
 /// Listens for UserMessage events and runs the LLM, emitting
@@ -92,6 +94,8 @@ pub struct EventRunner {
     provider_name: Option<String>,
     /// Provider's context window in tokens.
     context_window: Option<usize>,
+    /// Blob store for resolving image references.
+    blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
 }
 
 impl EventRunner {
@@ -190,6 +194,7 @@ impl EventRunner {
             pool: config.pool,
             provider_name: config.provider_name,
             context_window: config.context_window,
+            blob_store: config.blob_store,
         }
     }
 
@@ -214,6 +219,7 @@ impl EventRunner {
             pool: None,
             provider_name: None,
             context_window: None,
+            blob_store: None,
         }
     }
 
@@ -284,7 +290,7 @@ impl EventRunner {
             None => return,
         };
         let text = match &event.payload {
-            EventPayload::UserMessage { text } => text.clone(),
+            EventPayload::UserMessage { text, .. } => text.clone(),
             _ => return,
         };
         if text.is_empty() {
@@ -316,7 +322,7 @@ impl EventRunner {
                     for text in pending {
                         runner.bus.publish(Event::with_session(
                             EventSource::Hub,
-                            EventPayload::UserMessage { text },
+                            EventPayload::user_message(text),
                             &sid,
                         ));
                     }
@@ -340,6 +346,7 @@ impl EventRunner {
             pool: self.pool.clone(),
             provider_name: self.provider_name.clone(),
             context_window: self.context_window,
+            blob_store: self.blob_store.clone(),
         })
     }
 
@@ -611,7 +618,7 @@ impl EventRunner {
         // Dispatch as a normal UserMessage for the standard processing path
         self.bus.publish(Event::with_session(
             EventSource::Connector,
-            EventPayload::UserMessage { text: content },
+            EventPayload::user_message(content),
             &session_id,
         ));
     }
@@ -676,16 +683,16 @@ impl EventRunner {
             }
         };
 
-        let content = match &event.payload {
-            EventPayload::UserMessage { text } => text.clone(),
+        let (content, images) = match &event.payload {
+            EventPayload::UserMessage { text, images } => (text.clone(), images.clone()),
             _ => return,
         };
 
-        if content.is_empty() {
+        if content.is_empty() && images.is_empty() {
             return;
         }
 
-        debug!(session_id = %session_id, "processing user message");
+        debug!(session_id = %session_id, images = images.len(), "processing user message");
 
         // Persist user message
         let user_msg = Message::user(&content);
@@ -761,12 +768,7 @@ impl EventRunner {
         // Build chat messages
         let mut chat_messages = Vec::new();
         if !system_prompt.is_empty() {
-            chat_messages.push(ChatMessage {
-                role: ozzie_llm::ChatRole::System,
-                content: system_prompt,
-                tool_calls: Vec::new(),
-                tool_call_id: None,
-            });
+            chat_messages.push(ChatMessage::text(ozzie_llm::ChatRole::System, system_prompt));
         }
         for msg in &history {
             let role = match msg.role.as_str() {
@@ -775,12 +777,22 @@ impl EventRunner {
                 "tool" => ozzie_llm::ChatRole::Tool,
                 _ => ozzie_llm::ChatRole::User,
             };
-            chat_messages.push(ChatMessage {
-                role,
-                content: msg.content.clone(),
-                tool_calls: Vec::new(),
-                tool_call_id: None,
-            });
+            chat_messages.push(ChatMessage::text(role, &msg.content));
+        }
+
+        // Append image content parts to the last user message if present
+        if !images.is_empty() && let Some(last_user) = chat_messages.iter_mut().rev().find(|m| m.role == ozzie_llm::ChatRole::User) {
+            for blob in &images {
+                last_user.content.push(ozzie_types::ContentPart::image(blob.clone()));
+            }
+        }
+
+        // Resolve blob references to inline base64 for LLM consumption
+        if let Some(ref store) = self.blob_store {
+            match crate::blob_store::resolve_blobs(&chat_messages, store.as_ref()).await {
+                Ok(resolved) => chat_messages = resolved,
+                Err(e) => warn!(error = %e, "failed to resolve image blobs, continuing without images"),
+            }
         }
 
         // Resolve tools for this session's policy (if set).
@@ -1405,9 +1417,7 @@ mod tests {
         // Publish a user message
         bus.publish(Event::with_session(
             EventSource::Hub,
-            EventPayload::UserMessage {
-                text: "hi".to_string(),
-            },
+            EventPayload::user_message("hi"),
             "sess_test",
         ));
 
@@ -1472,6 +1482,7 @@ mod tests {
             provider_name: None,
             context_window: None,
             user_profile: None,
+            blob_store: None,
         }));
         runner.start();
 
@@ -1479,9 +1490,7 @@ mod tests {
 
         bus.publish(Event::with_session(
             EventSource::Hub,
-            EventPayload::UserMessage {
-                text: "salut".to_string(),
-            },
+            EventPayload::user_message("salut"),
             "sess_config",
         ));
 

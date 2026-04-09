@@ -31,7 +31,12 @@ pub enum EventSource {
 pub enum EventPayload {
     // User -> Agent
     #[serde(rename = "user.message")]
-    UserMessage { text: String },
+    UserMessage {
+        text: String,
+        /// Image blob references attached to the message.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ozzie_types::BlobRef>,
+    },
 
     // Agent -> Client
     #[serde(rename = "assistant.message")]
@@ -315,6 +320,24 @@ fn generate_event_id() -> String {
     let seq = EVENT_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     let now = Utc::now().timestamp_nanos_opt().unwrap_or(0);
     format!("{now}-{seq}")
+}
+
+impl EventPayload {
+    /// Creates a text-only `UserMessage` (no image attachments).
+    pub fn user_message(text: impl Into<String>) -> Self {
+        Self::UserMessage {
+            text: text.into(),
+            images: Vec::new(),
+        }
+    }
+
+    /// Creates a `UserMessage` with image attachments.
+    pub fn user_message_with_images(text: impl Into<String>, images: Vec<ozzie_types::BlobRef>) -> Self {
+        Self::UserMessage {
+            text: text.into(),
+            images,
+        }
+    }
 }
 
 impl Event {

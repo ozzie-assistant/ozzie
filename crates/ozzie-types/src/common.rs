@@ -1,5 +1,82 @@
 use serde::{Deserialize, Serialize};
 
+// ---- Multimodal content ----
+
+/// A reference to a blob stored on disk (e.g. in `{session_dir}/blobs/{hash}.{ext}`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BlobRef {
+    /// Content-addressed hash (SHA-256 hex).
+    pub hash: String,
+    /// MIME type (e.g. "image/png", "image/jpeg").
+    pub media_type: String,
+}
+
+/// A content part in a message — text or image reference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    Text { text: String },
+    Image {
+        blob: BlobRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alt: Option<String>,
+    },
+    /// Image with base64 data pre-loaded. Transient — used only for LLM API calls.
+    /// Created by `resolve_blobs()`, never persisted to disk.
+    ImageInline {
+        media_type: String,
+        data: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alt: Option<String>,
+    },
+}
+
+impl ContentPart {
+    pub fn text(s: impl Into<String>) -> Self {
+        Self::Text { text: s.into() }
+    }
+
+    pub fn image(blob: BlobRef) -> Self {
+        Self::Image { blob, alt: None }
+    }
+
+    pub fn image_with_alt(blob: BlobRef, alt: impl Into<String>) -> Self {
+        Self::Image { blob, alt: Some(alt.into()) }
+    }
+
+    pub fn image_inline(media_type: impl Into<String>, base64_data: impl Into<String>) -> Self {
+        Self::ImageInline {
+            media_type: media_type.into(),
+            data: base64_data.into(),
+            alt: None,
+        }
+    }
+
+    /// Returns the text content if this is a `Text` part, or `None`.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text { text } => Some(text),
+            _ => None,
+        }
+    }
+
+    /// Returns true if this is any image variant (Image or ImageInline).
+    pub fn is_image(&self) -> bool {
+        matches!(self, Self::Image { .. } | Self::ImageInline { .. })
+    }
+}
+
+/// Convenience: collapse `Vec<ContentPart>` into a single text string (ignoring non-text parts).
+pub fn parts_to_text(parts: &[ContentPart]) -> String {
+    let texts: Vec<&str> = parts.iter().filter_map(|p| p.as_text()).collect();
+    texts.join("\n")
+}
+
+/// Convenience: wrap a text string into a single-element content parts vec.
+pub fn text_to_parts(text: impl Into<String>) -> Vec<ContentPart> {
+    vec![ContentPart::text(text)]
+}
+
 /// Semantic reaction type for connector status indicators.
 ///
 /// Each connector maps these to platform-specific representations

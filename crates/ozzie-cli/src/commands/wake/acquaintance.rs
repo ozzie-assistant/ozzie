@@ -134,18 +134,8 @@ async fn call_introduction(
     );
 
     let messages = vec![
-        ChatMessage {
-            role: ChatRole::System,
-            content: system,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::User,
-            content: user_input.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
+        ChatMessage::text(ChatRole::System, system),
+        ChatMessage::text(ChatRole::User, user_input),
     ];
 
     let response = provider.chat(&messages, &[]).await?;
@@ -170,30 +160,10 @@ async fn call_adjustment(
     );
 
     let messages = vec![
-        ChatMessage {
-            role: ChatRole::System,
-            content: system,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::User,
-            content: user_input.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::Assistant,
-            content: previous_response.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::User,
-            content: adjustment.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
+        ChatMessage::text(ChatRole::System, system),
+        ChatMessage::text(ChatRole::User, user_input),
+        ChatMessage::text(ChatRole::Assistant, previous_response),
+        ChatMessage::text(ChatRole::User, adjustment),
     ];
 
     let response = provider.chat(&messages, &[]).await?;
@@ -236,18 +206,8 @@ Respond in JSON only:
     );
 
     let messages = vec![
-        ChatMessage {
-            role: ChatRole::System,
-            content: system.to_string(),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: ChatRole::User,
-            content: user_msg,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        },
+        ChatMessage::text(ChatRole::System, system),
+        ChatMessage::text(ChatRole::User, user_msg),
     ];
 
     let response = provider.chat(&messages, &[]).await?;

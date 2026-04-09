@@ -1,4 +1,5 @@
 pub mod approval;
+pub mod blob_store;
 pub mod dream;
 pub mod heartbeat;
 pub mod connector;
@@ -23,6 +24,7 @@ pub mod storage;
 pub mod toolset;
 
 pub use approval::EventBusApprovalRequester;
+pub use blob_store::{FsBlobStore, resolve_blobs};
 pub use dream::DreamRunner;
 pub use connector::{ProcessInfo, ProcessSupervisor};
 pub use json_device_store::JsonDeviceStore;
