@@ -184,6 +184,23 @@ impl DreamRunner {
                     warn!(error = %e, "dream: wiki synthesis failed");
                 }
             }
+
+            // Generate index and run lint
+            let pages_dir = self.ozzie_path.join("memory").join("pages");
+            if let Err(e) = super::index_generator::generate_index(
+                &pages_dir,
+                page_store.as_ref(),
+                self.memory_store.as_ref(),
+            )
+            .await
+            {
+                warn!(error = %e, "dream: index generation failed");
+            }
+
+            let warnings = super::lint::lint(page_store.as_ref(), self.memory_store.as_ref()).await;
+            if !warnings.is_empty() {
+                info!(count = warnings.len(), "dream: lint warnings detected");
+            }
         }
 
         // Emit event for observability

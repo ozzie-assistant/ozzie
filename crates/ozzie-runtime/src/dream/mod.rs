@@ -1,4 +1,6 @@
 mod classifier;
+pub mod index_generator;
+pub mod lint;
 mod record_store;
 mod runner;
 pub mod synthesizer;
