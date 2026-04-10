@@ -6,6 +6,7 @@ mod schedule;
 mod session;
 mod tier;
 mod toolset;
+mod wiki;
 
 pub use capability::*;
 pub use dream::*;
@@ -15,3 +16,4 @@ pub use schedule::*;
 pub use session::*;
 pub use tier::*;
 pub use toolset::*;
+pub use wiki::*;

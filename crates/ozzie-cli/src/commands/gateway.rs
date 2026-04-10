@@ -26,7 +26,7 @@ use ozzie_core::storage::ConfigStore;
 use ozzie_runtime::storage::FileStorage;
 use ozzie_gateway::hub::HubHandler;
 use ozzie_gateway::{AppState, Hub, Server, ServerConfig};
-use ozzie_memory::MarkdownStore;
+use ozzie_memory::{MarkdownPageStore, MarkdownStore};
 use ozzie_runtime::approval::EventBusApprovalRequester;
 use ozzie_runtime::scheduler::Scheduler;
 use ozzie_runtime::{
@@ -70,7 +70,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let bus = Arc::new(Bus::new(cfg.events.buffer_size));
 
     let sessions = init_session_store()?;
-    let memory_store = init_memory().await?;
+    let (memory_store, page_store) = init_memory().await?;
 
     let (provider_registry, actor_pool) = create_providers(&cfg)?;
     let provider_registry = Arc::new(provider_registry);
@@ -156,11 +156,15 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         skill_descriptions: skill_descs,
         custom_instructions: cfg.agent.system_prompt.clone(),
         tools,
-        retriever: Some(Arc::new(
-            ozzie_runtime::memory_retriever::FtsMemoryRetriever::new(
+        retriever: Some({
+            let fts = Arc::new(ozzie_runtime::memory_retriever::FtsMemoryRetriever::new(
                 memory_store.clone() as Arc<dyn ozzie_core::domain::MemoryStore>,
-            ),
-        )),
+            ));
+            Arc::new(ozzie_runtime::page_retriever::PageAwareRetriever::new(
+                page_store.clone() as Arc<dyn ozzie_core::domain::PageStore>,
+                fts as Arc<dyn ozzie_core::domain::MemoryRetriever>,
+            ))
+        }),
         compressor,
         permissions: Some(permissions.clone()),
         approver: Some(approver as Arc<dyn ozzie_core::conscience::ApprovalRequester>),
@@ -194,13 +198,16 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     info!("cost tracker started");
 
     // Dream consolidation — extracts lasting knowledge from conversations.
-    let dream_runner = Arc::new(ozzie_runtime::DreamRunner::new(
-        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
-        memory_store.clone() as Arc<dyn ozzie_memory::Store>,
-        provider_registry.default_provider().clone(),
-        &ozzie_path(),
-        bus.clone(),
-    ));
+    let dream_runner = Arc::new(
+        ozzie_runtime::DreamRunner::new(
+            sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            memory_store.clone() as Arc<dyn ozzie_memory::Store>,
+            provider_registry.default_provider().clone(),
+            &ozzie_path(),
+            bus.clone(),
+        )
+        .with_page_store(page_store.clone() as Arc<dyn ozzie_core::domain::PageStore>),
+    );
     dream_runner.start().await;
     info!("dream consolidation started (12h interval)");
 
@@ -284,9 +291,9 @@ fn init_session_store() -> anyhow::Result<Arc<FileSessionStore>> {
     Ok(sessions)
 }
 
-async fn init_memory() -> anyhow::Result<Arc<ozzie_memory::MarkdownStore>> {
+async fn init_memory() -> anyhow::Result<(Arc<MarkdownStore>, Arc<MarkdownPageStore>)> {
     let store = Arc::new(
-        ozzie_memory::MarkdownStore::new(&memory_path())
+        MarkdownStore::new(&memory_path())
             .map_err(|e| anyhow::anyhow!("init memory store: {e}"))?,
     );
 
@@ -309,7 +316,19 @@ async fn init_memory() -> anyhow::Result<Arc<ozzie_memory::MarkdownStore>> {
         "memory store initialized (markdown SsoT)"
     );
 
-    Ok(store)
+    // Wiki page store — shares the same database, pages in a subdirectory
+    let pages_dir = memory_path().join("pages");
+    let db_path = memory_path().join(".cache").join("memory.db");
+    let page_store = Arc::new(
+        MarkdownPageStore::new(&pages_dir, &db_path)
+            .map_err(|e| anyhow::anyhow!("init page store: {e}"))?,
+    );
+    let page_count = page_store
+        .rebuild_index()
+        .map_err(|e| anyhow::anyhow!("rebuild page index: {e}"))?;
+    info!(pages = page_count, "wiki page store initialized");
+
+    Ok((store, page_store))
 }
 
 fn init_compressor(

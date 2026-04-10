@@ -9,6 +9,7 @@ pub mod layered_store;
 pub mod json_device_store;
 pub mod json_pairing_store;
 pub mod memory_retriever;
+pub mod page_retriever;
 pub mod pairing_manager;
 pub mod cost_tracker;
 pub mod event_runner;

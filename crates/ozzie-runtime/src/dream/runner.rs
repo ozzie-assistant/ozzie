@@ -6,7 +6,7 @@ use chrono::Utc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use ozzie_core::domain::{DreamRecord, DreamStats, Message};
+use ozzie_core::domain::{DreamRecord, DreamStats, Message, PageStore};
 use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_llm::Provider;
 use ozzie_memory::{ImportanceLevel, MemoryEntry, MemoryType, Store};
@@ -16,6 +16,7 @@ use crate::SessionStore;
 
 use super::classifier;
 use super::record_store::DreamRecordStore;
+use super::synthesizer::Synthesizer;
 
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60); // 12 hours
 const DEFAULT_ACTIVE_MIN_AGE: Duration = Duration::from_secs(2 * 60 * 60); // 2 hours
@@ -25,6 +26,7 @@ const MIN_MESSAGES_TO_PROCESS: usize = 4;
 pub struct DreamRunner {
     sessions: Arc<dyn SessionStore>,
     memory_store: Arc<dyn Store>,
+    page_store: Option<Arc<dyn PageStore>>,
     provider: Arc<dyn Provider>,
     bus: Arc<dyn EventBus>,
     ozzie_path: PathBuf,
@@ -44,6 +46,7 @@ impl DreamRunner {
         Self {
             sessions,
             memory_store,
+            page_store: None,
             provider,
             bus,
             ozzie_path: ozzie_path.to_path_buf(),
@@ -51,6 +54,12 @@ impl DreamRunner {
             active_min_age: DEFAULT_ACTIVE_MIN_AGE,
             cancel: Mutex::new(None),
         }
+    }
+
+    /// Enables wiki page synthesis during dream runs.
+    pub fn with_page_store(mut self, page_store: Arc<dyn PageStore>) -> Self {
+        self.page_store = Some(page_store);
+        self
     }
 
     pub fn with_interval(mut self, interval: Duration) -> Self {
@@ -155,6 +164,24 @@ impl DreamRunner {
                         "dream: failed to process session"
                     );
                     stats.sessions_errored += 1;
+                }
+            }
+        }
+
+        // Wiki page synthesis — runs after all sessions are classified.
+        if let Some(ref page_store) = self.page_store {
+            let synthesizer = Synthesizer::new(
+                self.memory_store.clone(),
+                page_store.clone(),
+                self.provider.clone(),
+            );
+            match synthesizer.synthesize().await {
+                Ok(syn_stats) => {
+                    stats.pages_created = syn_stats.pages_created;
+                    stats.pages_updated = syn_stats.pages_updated;
+                }
+                Err(e) => {
+                    warn!(error = %e, "dream: wiki synthesis failed");
                 }
             }
         }

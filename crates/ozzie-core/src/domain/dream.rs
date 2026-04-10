@@ -53,18 +53,22 @@ pub struct DreamStats {
     pub sessions_errored: usize,
     pub profile_entries_added: usize,
     pub memories_created: usize,
+    pub pages_created: usize,
+    pub pages_updated: usize,
 }
 
 impl std::fmt::Display for DreamStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "processed={}, skipped={}, errors={}, profile+={}, memories+={}",
+            "processed={}, skipped={}, errors={}, profile+={}, memories+={}, pages+={}/~{}",
             self.sessions_processed,
             self.sessions_skipped,
             self.sessions_errored,
             self.profile_entries_added,
             self.memories_created,
+            self.pages_created,
+            self.pages_updated,
         )
     }
 }

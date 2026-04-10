@@ -224,6 +224,37 @@ pub trait MemoryRetriever: Send + Sync {
     ) -> Result<Vec<RetrievedMemory>, MemoryError>;
 }
 
+// ---- Wiki Page Port ----
+
+/// Domain port for wiki page storage (synthesized thematic pages).
+///
+/// Pages are created/updated by the dream consolidation pipeline.
+/// The `upsert` semantics allow idempotent creation: if a page with
+/// the same slug exists, it is updated and its revision bumped.
+#[async_trait::async_trait]
+pub trait PageStore: Send + Sync {
+    /// Creates or updates a page. On update, bumps revision automatically.
+    async fn upsert(
+        &self,
+        page: &mut super::WikiPage,
+        content: &str,
+    ) -> Result<(), MemoryError>;
+    /// Fetches a page by ID.
+    async fn get(&self, id: &str) -> Result<(super::WikiPage, String), MemoryError>;
+    /// Fetches a page by slug.
+    async fn get_by_slug(&self, slug: &str) -> Result<(super::WikiPage, String), MemoryError>;
+    /// Deletes a page by ID.
+    async fn delete(&self, id: &str) -> Result<(), MemoryError>;
+    /// Lists all pages (metadata only).
+    async fn list(&self) -> Result<Vec<super::WikiPage>, MemoryError>;
+    /// Full-text search returning metadata (no content).
+    async fn search_text(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<super::PageSearchResult>, MemoryError>;
+}
+
 // ---- Compression Port ----
 
 /// Compresses a conversation history to fit within token budgets.
