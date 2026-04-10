@@ -875,6 +875,8 @@ impl EventRunner {
             work_dir,
             pending_source: Some(runtime.clone() as Arc<dyn react::PendingDrain>),
             cancel_token: Some(runtime.cancel_token().clone()),
+            repetition_window: 10,
+            repetition_threshold: 3,
         };
 
         let result = react::ReactLoop::run(&config, chat_messages).await;

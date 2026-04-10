@@ -7,6 +7,58 @@ use ozzie_llm::{ChatMessage, ChatResponse, ChatRole, LlmError, Provider, ToolCal
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+// ---- Tool-response compaction ----
+
+/// Maximum characters for a tool response before truncation (~3000 tokens).
+const TOOL_RESPONSE_MAX_CHARS: usize = 12_000;
+
+/// Truncates a tool response that exceeds [`TOOL_RESPONSE_MAX_CHARS`].
+///
+/// Keeps the first ~70% and last ~10% of the budget, inserting a truncation
+/// marker in between so the LLM knows data was omitted.
+fn compact_tool_response(result: &str, tool_name: &str) -> String {
+    if result.len() <= TOOL_RESPONSE_MAX_CHARS {
+        return result.to_string();
+    }
+
+    let total_lines = result.lines().count();
+    let head_budget = (TOOL_RESPONSE_MAX_CHARS as f64 * 0.7) as usize;
+    let tail_budget = (TOOL_RESPONSE_MAX_CHARS as f64 * 0.1) as usize;
+
+    // Find a safe UTF-8 boundary for head
+    let head_end = result
+        .char_indices()
+        .take_while(|(i, _)| *i < head_budget)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    let head = &result[..head_end];
+
+    // Find a safe UTF-8 boundary for tail
+    let tail_start_raw = result.len().saturating_sub(tail_budget);
+    let tail_start = result[tail_start_raw..]
+        .char_indices()
+        .next()
+        .map(|(i, _)| tail_start_raw + i)
+        .unwrap_or(result.len());
+    let tail = &result[tail_start..];
+
+    let head_lines = head.lines().count();
+    let tail_lines = tail.lines().count();
+    let omitted = total_lines.saturating_sub(head_lines + tail_lines);
+
+    debug!(
+        tool = tool_name,
+        original_len = result.len(),
+        omitted_lines = omitted,
+        "tool response truncated"
+    );
+
+    format!(
+        "{head}\n\n... [{omitted} lines truncated, {total_lines} total] ...\n\n{tail}"
+    )
+}
+
 // ---- Traits ----
 
 /// Observer for ReactLoop events (streaming, tool calls, LLM calls).
@@ -104,6 +156,45 @@ impl TurnBudget {
     }
 }
 
+// ---- Repetition detection ----
+
+/// Tracks recent tool-call fingerprints to detect looping behaviour.
+///
+/// When the same (tool_name, arguments) combination appears `threshold` times
+/// within the last `window_size` calls, the loop injects a warning message
+/// asking the LLM to change strategy.
+struct RepetitionTracker {
+    window_size: usize,
+    threshold: usize,
+    fingerprints: Vec<u64>,
+}
+
+impl RepetitionTracker {
+    fn new(window_size: usize, threshold: usize) -> Self {
+        Self {
+            window_size,
+            threshold,
+            fingerprints: Vec::with_capacity(window_size),
+        }
+    }
+
+    /// Records a tool call. Returns `true` if the repetition threshold is hit.
+    fn record(&mut self, tool_name: &str, arguments: &serde_json::Value) -> bool {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        tool_name.hash(&mut hasher);
+        arguments.to_string().hash(&mut hasher);
+        let fp = hasher.finish();
+
+        self.fingerprints.push(fp);
+        if self.fingerprints.len() > self.window_size {
+            self.fingerprints.remove(0);
+        }
+
+        self.fingerprints.iter().filter(|&&f| f == fp).count() >= self.threshold
+    }
+}
+
 // ---- Config ----
 
 /// Configuration for the ReAct loop.
@@ -126,6 +217,10 @@ pub struct ReactConfig {
     pub pending_source: Option<Arc<dyn PendingDrain>>,
     /// Optional cancellation token — checked between turns.
     pub cancel_token: Option<CancellationToken>,
+    /// Sliding window size for repetition detection (0 = disabled). Default: 10.
+    pub repetition_window: usize,
+    /// How many identical fingerprints in the window trigger a warning. Default: 3.
+    pub repetition_threshold: usize,
 }
 
 impl Default for ReactConfig {
@@ -140,6 +235,8 @@ impl Default for ReactConfig {
             work_dir: None,
             pending_source: None,
             cancel_token: None,
+            repetition_window: 10,
+            repetition_threshold: 3,
         }
     }
 }
@@ -238,6 +335,12 @@ impl ReactLoop {
         let mut output_tokens_used = 0u64;
         let mut index = 0u64;
         let budget = &config.budget;
+
+        let mut repetition_tracker = if config.repetition_window > 0 {
+            Some(RepetitionTracker::new(config.repetition_window, config.repetition_threshold))
+        } else {
+            None
+        };
 
         let deadline = tokio::time::Instant::now() + budget.timeout;
 
@@ -396,10 +499,13 @@ impl ReactLoop {
 
                 let is_error = result.starts_with("Error:");
 
-                // Notify observer after execution
+                // Notify observer after execution (with full result for logging)
                 if let Some(ref obs) = config.observer {
                     obs.on_tool_result(&tc.id, &tc.name, &result, is_error);
                 }
+
+                // Compact large tool responses to preserve context budget
+                let result = compact_tool_response(&result, &tc.name);
 
                 chat_messages.push(ChatMessage {
                     role: ChatRole::Tool,
@@ -407,6 +513,19 @@ impl ReactLoop {
                     tool_calls: Vec::new(),
                     tool_call_id: Some(tc.id.clone()),
                 });
+
+                // Repetition detection: warn the LLM if it keeps calling the same tool
+                if let Some(ref mut tracker) = repetition_tracker
+                    && tracker.record(&tc.name, &tc.arguments)
+                {
+                    warn!(tool = %tc.name, "repetition detected: agent is looping");
+                    chat_messages.push(ChatMessage::text(
+                        ChatRole::User,
+                        "You are repeating the same actions with the same arguments. \
+                         Try a different approach or explain what you are stuck on.",
+                    ));
+                    break;
+                }
             }
         }
     }
@@ -512,6 +631,9 @@ fn build_chat_messages(instruction: &str, messages: &[Message]) -> Vec<ChatMessa
     }
 
     for msg in messages {
+        if !msg.agent_visible {
+            continue;
+        }
         let role = match msg.role.as_str() {
             "system" => ChatRole::System,
             "assistant" => ChatRole::Assistant,
@@ -1053,5 +1175,138 @@ mod tests {
             }
             other => panic!("expected Yielded, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn build_chat_messages_filters_agent_invisible() {
+        let messages = vec![
+            Message::user("visible"),
+            Message::assistant("hidden").with_agent_visible(false),
+            Message::user("also visible"),
+        ];
+        let chat = build_chat_messages("", &messages);
+        assert_eq!(chat.len(), 2);
+        assert_eq!(chat[0].text_content(), "visible");
+        assert_eq!(chat[1].text_content(), "also visible");
+    }
+
+    #[test]
+    fn compact_short_response_unchanged() {
+        let short = "Hello world";
+        assert_eq!(compact_tool_response(short, "test"), short);
+    }
+
+    #[test]
+    fn compact_large_response_truncated() {
+        let line = "x".repeat(100);
+        let lines: Vec<&str> = (0..200).map(|_| line.as_str()).collect();
+        let large = lines.join("\n"); // ~20k chars
+        assert!(large.len() > TOOL_RESPONSE_MAX_CHARS);
+
+        let result = compact_tool_response(&large, "test");
+        assert!(result.len() < large.len(), "should be smaller after truncation");
+        assert!(result.contains("lines truncated"), "should have truncation marker");
+        assert!(result.contains("200 total"), "should mention total line count");
+    }
+
+    #[test]
+    fn compact_preserves_head_and_tail() {
+        // Build a response with identifiable head and tail
+        let mut content = String::new();
+        content.push_str("HEAD_MARKER\n");
+        for _ in 0..300 {
+            content.push_str(&"x".repeat(100));
+            content.push('\n');
+        }
+        content.push_str("TAIL_MARKER\n");
+
+        let result = compact_tool_response(&content, "test");
+        assert!(result.contains("HEAD_MARKER"), "head should be preserved");
+        assert!(result.contains("TAIL_MARKER"), "tail should be preserved");
+    }
+
+    #[test]
+    fn repetition_tracker_detects_loop() {
+        let mut tracker = RepetitionTracker::new(5, 3);
+        let args = serde_json::json!({"path": "/tmp/test.txt"});
+
+        assert!(!tracker.record("file_read", &args));
+        assert!(!tracker.record("file_read", &args));
+        assert!(tracker.record("file_read", &args)); // 3rd hit → true
+    }
+
+    #[test]
+    fn repetition_tracker_different_args_dont_trigger() {
+        let mut tracker = RepetitionTracker::new(5, 3);
+
+        assert!(!tracker.record("file_read", &serde_json::json!({"path": "a.txt"})));
+        assert!(!tracker.record("file_read", &serde_json::json!({"path": "b.txt"})));
+        assert!(!tracker.record("file_read", &serde_json::json!({"path": "c.txt"})));
+    }
+
+    #[test]
+    fn repetition_tracker_window_slides() {
+        let mut tracker = RepetitionTracker::new(4, 3);
+        let same = serde_json::json!({"cmd": "ls"});
+
+        assert!(!tracker.record("exec", &same)); // [A]
+        assert!(!tracker.record("exec", &same)); // [A, A]
+        // Interleave different calls to push old fingerprints out of window
+        assert!(!tracker.record("other", &serde_json::json!({}))); // [A, A, B]
+        assert!(!tracker.record("other2", &serde_json::json!({}))); // [A, A, B, C]
+        assert!(!tracker.record("exec", &same)); // [A, B, C, A] — only 2x A in window
+        assert!(!tracker.record("exec", &same)); // [B, C, A, A] — only 2x A
+    }
+
+    #[tokio::test]
+    async fn repetition_injects_warning() {
+        // Provider returns the same tool call every time, then finishes on 5th call
+        let mut responses = Vec::new();
+        for i in 0..10 {
+            responses.push(ChatResponse {
+                content: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: format!("c{i}"),
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({"same": "args"}),
+                }],
+                usage: ozzie_llm::TokenUsage {
+                    input_tokens: 5,
+                    output_tokens: 5,
+                    ..Default::default()
+                },
+                stop_reason: None,
+                model: None,
+            });
+        }
+        // Final response after the warning
+        responses.push(ChatResponse {
+            content: "I'll try something different".to_string(),
+            tool_calls: Vec::new(),
+            usage: ozzie_llm::TokenUsage {
+                input_tokens: 5,
+                output_tokens: 5,
+                ..Default::default()
+            },
+            stop_reason: None,
+            model: None,
+        });
+
+        let provider = Arc::new(MockProvider {
+            responses,
+            call_count: AtomicUsize::new(0),
+        });
+
+        let config = ReactConfig {
+            provider,
+            tools: vec![Arc::new(EchoTool)],
+            instruction: String::new(),
+            repetition_window: 5,
+            repetition_threshold: 3,
+            ..Default::default()
+        };
+
+        let result = ReactLoop::run_from_messages(&config, vec![Message::user("go")]).await;
+        assert!(result.is_completed(), "expected Completed, got: {result:?}");
     }
 }
