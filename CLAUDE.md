@@ -5,7 +5,7 @@
 ## Current state
 
 Full agent OS with 7 LLM drivers (anthropic, openai, gemini, mistral, groq, ollama, xai),
-ReAct loop, async tasks, semantic memory, user profile, MCP client/server (rmcp),
+ReAct loop, async tasks, semantic memory + wiki pages, user profile, MCP client/server (rmcp),
 skill engine, scheduler, connector system (Discord, File), and dangerous tool approval flow.
 
 Working: `ozzie gateway` → `ozzie ask "hello"` → streamed LLM response with tool calling.

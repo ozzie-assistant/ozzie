@@ -30,7 +30,9 @@ executable code. Ozzie takes a different approach:
 - **Multi-LLM** — 7 drivers (Anthropic, OpenAI, Gemini, Mistral, Groq, Ollama, xAI) with fallback chains, circuit
   breaker, and local-first SLM support
 - **Async task delegation** — Background tasks with dependency chains, multi-step plans, crash recovery
-- **Semantic memory** — Hybrid retrieval (keyword + vector), decay model, LLM-based consolidation, implicit injection
+- **Semantic memory + Wiki** — Hybrid retrieval (keyword + vector), decay model, LLM-based consolidation, wiki page
+  synthesis from dream job, page-aware two-stage retrieval, schema governance. Wiki layer inspired by
+  [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 - **Layered context compression** — L0/L1/L2 hierarchical compression for long conversations
 - **MCP client & server** — Connect external MCP servers (with `trusted_tools`); expose Ozzie tools via MCP for Claude Code
 - **Dynamic tool activation** — Core tools always active, plugin/MCP tools activated on demand via `activate`
@@ -64,7 +66,8 @@ executable code. Ozzie takes a different approach:
 │  └─ Tool registry (JSON Schema)              │
 │                                               │
 │  Memory (ozzie-memory)                        │
-│  └─ SQLite + FTS5 + vector + consolidation   │
+│  ├─ SQLite + FTS5 + vector + consolidation   │
+│  └─ Wiki pages (dream synthesis + retrieval) │
 └────────────────────┬──────────────────────────┘
                      │ WebSocket (JSON-RPC 2.0)
            ┌─────────┼─────────┐
@@ -240,6 +243,7 @@ clients/
 | 15+ native tools                | done      | File, shell, git, web, memory, scheduler, subtask, sub-agents |
 | AST sandbox                     | done      | brush-parser, path jail, dangerous tool approval       |
 | Semantic memory                 | done      | SQLite + FTS5 + cosine, hybrid search, decay model     |
+| Wiki memory                     | done      | Dream synthesis → wiki pages, page-aware retrieval, index, lint, schema governance, page splitting |
 | User profile                    | done      | Wizard acquaintance, LLM synthesis, prompt injection   |
 | Layered context compression     | done      | L0/L1/L2, BM25, heuristic fallback without LLM        |
 | Skill engine                    | done      | Markdown + YAML DAG, parallel steps, triggers          |
@@ -256,7 +260,7 @@ clients/
 
 | Feature                              | Status       | What's missing                                           |
 |--------------------------------------|--------------|----------------------------------------------------------|
-| Memory consolidation ("dream" job)   | infra ready  | Scheduled job, triage (profile vs factual), profile enrichment from conversations |
+| Memory consolidation ("dream" job)   | done         | 12h interval, profile + memory extraction, wiki page synthesis, index generation, lint |
 | MCP server                           | partial      | Experimental, minimal tests                              |
 | Discord e2e tests                    | missing      | Zero e2e tests on the full connector flow                |
 | DM-initiated pairing                 | partial      | `/pair` slash command exists, not DM-triggered           |
@@ -272,7 +276,6 @@ clients/
 | Claude Code connector                | "Channels" bridge — delegate coding tasks to expert agent |
 | WASM plugin system (WIT)             | Sandboxed tool + connector plugins. Tools first, connectors blocked on WASM stream maturity |
 | Recursive self-improvement           | Agent modifies own source code. Needs safety framework + benchmark as fitness function |
-| Vision / image support               | Not in provider layer yet                                |
 | Connector abstraction trait          | Shared `ConnectorBridge` base to reduce duplication across bridges |
 
 ## License

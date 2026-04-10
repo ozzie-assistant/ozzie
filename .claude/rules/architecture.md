@@ -61,6 +61,10 @@ All Ozzie data lives under a single root directory:
 | LLM drivers       | `ozzie-llm/src/providers/`                         |
 | Gateway           | `ozzie-gateway/src/`                               |
 | Memory            | `ozzie-memory/src/`                                |
+| Wiki pages        | `ozzie-memory/src/page_store.rs` + `page_frontmatter.rs` |
+| Wiki domain       | `ozzie-core/src/domain/wiki.rs` + `memory_schema.rs` |
+| Dream pipeline    | `ozzie-runtime/src/dream/` (classifier, synthesizer, lint, index) |
+| Page retriever    | `ozzie-runtime/src/page_retriever.rs`              |
 
 ## Key conventions
 

@@ -10,7 +10,8 @@ description: Ozzie domain concepts — tools, MCP, connectors, memory, skills, s
 - **MCP** — Client via `rmcp` (stdio). Server via `rmcp::ServerHandler` (stdio + HTTP/SSE). External servers in `config.mcp.servers`. Tools dangerous by default unless `trusted_tools`.
 - **Connectors** — Standalone JSON-RPC bridge processes managed by `ProcessSupervisor`. Config: `config.connectors` with `ConnectorProcessConfig` (command, args, env, config, auto_pair, restart). Env vars: `OZZIE_GATEWAY_URL`, `OZZIE_GATEWAY_TOKEN`, `OZZIE_CONNECTOR_CONFIG`.
 - **Entity IDs** — `names::generate_id("task", exists_fn)` → `task_cosmic_asimov`. SF-themed, human-readable.
-- **Memory** — SQLite + FTS5 + brute-force cosine similarity. Multi-level decay. LLM-based consolidation.
+- **Memory** — SQLite + FTS5 + brute-force cosine similarity. Multi-level decay. LLM-based consolidation. Two layers: atomic entries (MemoryEntry) and wiki pages (WikiPage) synthesized by the dream job.
+- **Wiki Memory** — Inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Dream pipeline clusters entries by tag affinity (union-find), synthesizes thematic pages via LLM. `PageAwareRetriever` searches pages first (FTS5, score boost), falls back to entries with dedup. `MemorySchema` (`$OZZIE_PATH/memory_schema.md`) governs max page size, language, conventions. Pages exceeding `max_page_chars` are auto-split. `_index.md` generated after each pass. Lint detects orphan entries, stale pages, oversized pages.
 - **Skills** — `WorkflowRunner` executes DAG of steps with parallel execution via `tokio::spawn`.
 - **Prompt system** — `Composer` assembles sections (persona, profile, tools, memory, skills). Section builders are pure functions.
 - **Sandbox** — AST-based command validation via `brush-parser`. Path jail enforcement.
