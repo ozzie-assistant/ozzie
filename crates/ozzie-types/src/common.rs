@@ -131,6 +131,19 @@ pub struct PromptOption {
 pub struct MessagePayload {
     pub role: String,
     pub content: String,
+    /// Whether this message is shown to the user in the UI. Default: true.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub user_visible: bool,
+    /// Whether this message is sent to the LLM. Default: true.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub agent_visible: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 /// Per-tool argument constraints.

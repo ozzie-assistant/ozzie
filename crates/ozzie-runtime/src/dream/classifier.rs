@@ -173,16 +173,22 @@ mod tests {
                 role: "user".to_string(),
                 content: "hello".to_string(),
                 ts: None,
+                user_visible: true,
+                agent_visible: true,
             },
             Message {
                 role: "assistant".to_string(),
                 content: "   ".to_string(),
                 ts: None,
+                user_visible: true,
+                agent_visible: true,
             },
             Message {
                 role: "user".to_string(),
                 content: "goodbye".to_string(),
                 ts: None,
+                user_visible: true,
+                agent_visible: true,
             },
         ];
         let formatted = format_messages(&messages);

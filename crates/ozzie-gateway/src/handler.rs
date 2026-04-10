@@ -239,6 +239,8 @@ impl RequestHandler {
             .map(|m| MessagePayload {
                 role: m.role.clone(),
                 content: m.content.clone(),
+                user_visible: m.user_visible,
+                agent_visible: m.agent_visible,
             })
             .collect();
 
