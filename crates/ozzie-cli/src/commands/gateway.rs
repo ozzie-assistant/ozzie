@@ -238,6 +238,9 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         device_storage: Some(device_storage as Arc<dyn ozzie_core::domain::DeviceStorage>),
         device_approvals: Some(device_approvals),
         local_key: Some(local_key),
+        memory_store: Some(memory_store.clone() as Arc<dyn ozzie_core::domain::MemoryStore>),
+        page_store: Some(page_store.clone() as Arc<dyn ozzie_core::domain::PageStore>),
+        ozzie_path: ozzie_path(),
     };
 
     let server = Server::new(ServerConfig { host: args.host, port: args.port }, state);

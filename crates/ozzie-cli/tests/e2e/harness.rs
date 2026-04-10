@@ -216,6 +216,9 @@ impl TestGateway {
             device_storage: None,
             device_approvals: None,
             local_key: None,
+            memory_store: None,
+            page_store: None,
+            ozzie_path: std::path::PathBuf::new(),
         };
 
         let server = Server::new(ServerConfig::default(), state);

@@ -32,7 +32,7 @@ fn default_revision() -> u32 {
 }
 
 /// Metadata-only result from a page text search.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PageSearchResult {
     pub id: String,
     pub title: String,

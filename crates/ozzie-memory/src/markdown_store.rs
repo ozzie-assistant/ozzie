@@ -303,6 +303,19 @@ impl ozzie_core::domain::MemoryStore for MarkdownStore {
     ) -> Result<String, ozzie_core::domain::MemoryError> {
         self.index.get_content(id).await
     }
+
+    async fn list_entries(
+        &self,
+    ) -> Result<Vec<ozzie_core::domain::MemoryEntryMeta>, ozzie_core::domain::MemoryError> {
+        self.index.list_entries().await
+    }
+
+    async fn get_entry(
+        &self,
+        id: &str,
+    ) -> Result<(ozzie_core::domain::MemoryEntryMeta, String), ozzie_core::domain::MemoryError> {
+        self.index.get_entry(id).await
+    }
 }
 
 #[cfg(test)]

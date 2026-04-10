@@ -189,12 +189,26 @@ pub struct RetrievedMemory {
 }
 
 /// A single result from a text-based memory search (metadata only, no content).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct MemorySearchEntry {
     pub id: String,
     pub title: String,
     pub memory_type: String,
     pub tags: Vec<String>,
+}
+
+/// A full memory entry with metadata (no content).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemoryEntryMeta {
+    pub id: String,
+    pub title: String,
+    pub memory_type: String,
+    pub tags: Vec<String>,
+    pub source: String,
+    pub importance: String,
+    pub confidence: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Read-side domain port for memory storage.
@@ -211,6 +225,30 @@ pub trait MemoryStore: Send + Sync {
     ) -> Result<Vec<MemorySearchEntry>, MemoryError>;
     /// Fetches full content for a specific memory entry.
     async fn get_content(&self, id: &str) -> Result<String, MemoryError>;
+    /// Lists all active memory entries (metadata only).
+    async fn list_entries(&self) -> Result<Vec<MemoryEntryMeta>, MemoryError> {
+        // Default: not implemented (returns empty for backward compat)
+        Ok(Vec::new())
+    }
+    /// Fetches full entry metadata + content by ID.
+    async fn get_entry(&self, id: &str) -> Result<(MemoryEntryMeta, String), MemoryError> {
+        let content = self.get_content(id).await?;
+        // Minimal fallback — implementors should override for full metadata
+        Ok((
+            MemoryEntryMeta {
+                id: id.to_string(),
+                title: String::new(),
+                memory_type: String::new(),
+                tags: Vec::new(),
+                source: String::new(),
+                importance: "normal".to_string(),
+                confidence: 0.0,
+                created_at: DateTime::<Utc>::default(),
+                updated_at: DateTime::<Utc>::default(),
+            },
+            content,
+        ))
+    }
 }
 
 /// Retrieves relevant memories for context injection.

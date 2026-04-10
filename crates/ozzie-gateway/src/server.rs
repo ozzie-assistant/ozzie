@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
@@ -17,8 +18,10 @@ use ozzie_core::events::EventBus;
 
 use crate::auth::auth_middleware;
 use crate::hub::Hub;
+use crate::memory_api;
 use crate::pair_device::{self, DeviceApprovalCache};
 use crate::pairing;
+use crate::profile_api;
 
 /// Shared state for axum handlers.
 #[derive(Clone)]
@@ -40,6 +43,12 @@ pub struct AppState {
     /// The gateway's own device key (`$OZZIE_PATH/.key`).
     /// Pairing requests that carry this key are auto-approved (same-home shortcut).
     pub local_key: Option<String>,
+    /// Memory store for REST API (entries).
+    pub memory_store: Option<Arc<dyn ozzie_core::domain::MemoryStore>>,
+    /// Page store for REST API (wiki pages).
+    pub page_store: Option<Arc<dyn ozzie_core::domain::PageStore>>,
+    /// Ozzie data directory (for loading profile, schema, etc.).
+    pub ozzie_path: PathBuf,
 }
 
 /// Gateway server configuration.
@@ -93,6 +102,19 @@ impl Server {
                 "/api/pairings/chats",
                 delete(pairing::remove_chat_pairing),
             )
+            // Memory/Wiki API
+            .route("/api/memory/entries", get(memory_api::list_entries))
+            .route("/api/memory/entries/search", get(memory_api::search_entries))
+            .route("/api/memory/entries/{id}", get(memory_api::get_entry))
+            .route("/api/memory/pages", get(memory_api::list_pages))
+            .route("/api/memory/pages/search", get(memory_api::search_pages))
+            .route("/api/memory/pages/{slug}", get(memory_api::get_page))
+            .route("/api/memory/index", get(memory_api::get_index))
+            .route("/api/memory/schema", get(memory_api::get_schema))
+            // Profile API
+            .route("/api/profile", get(profile_api::get_profile))
+            .route("/api/profile", axum::routing::put(profile_api::update_profile))
+            .route("/api/profile/whoami", get(profile_api::get_whoami))
             .layer(middleware::from_fn(move |req, next| {
                 let auth = auth.clone();
                 auth_middleware(auth, req, next)
@@ -274,6 +296,9 @@ mod tests {
             device_storage: None,
             device_approvals: None,
             local_key: None,
+            memory_store: None,
+            page_store: None,
+            ozzie_path: std::path::PathBuf::new(),
         }
     }
 
@@ -329,6 +354,9 @@ mod tests {
             device_storage: None,
             device_approvals: None,
             local_key: None,
+            memory_store: None,
+            page_store: None,
+            ozzie_path: std::path::PathBuf::new(),
         }
     }
 

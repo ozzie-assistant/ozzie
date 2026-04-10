@@ -305,6 +305,41 @@ impl ozzie_core::domain::MemoryStore for SqliteStore {
             .map(|(_, content)| content)
             .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))
     }
+
+    async fn list_entries(
+        &self,
+    ) -> Result<Vec<ozzie_core::domain::MemoryEntryMeta>, ozzie_core::domain::MemoryError> {
+        let entries = self
+            .list()
+            .await
+            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))?;
+        Ok(entries.into_iter().map(entry_to_meta).collect())
+    }
+
+    async fn get_entry(
+        &self,
+        id: &str,
+    ) -> Result<(ozzie_core::domain::MemoryEntryMeta, String), ozzie_core::domain::MemoryError> {
+        let (entry, content) = self
+            .get(id)
+            .await
+            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))?;
+        Ok((entry_to_meta(entry), content))
+    }
+}
+
+fn entry_to_meta(e: MemoryEntry) -> ozzie_core::domain::MemoryEntryMeta {
+    ozzie_core::domain::MemoryEntryMeta {
+        id: e.id,
+        title: e.title,
+        memory_type: e.memory_type.as_str().to_string(),
+        tags: e.tags,
+        source: e.source,
+        importance: e.importance.as_str().to_string(),
+        confidence: e.confidence,
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+    }
 }
 
 fn parse_entry_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
