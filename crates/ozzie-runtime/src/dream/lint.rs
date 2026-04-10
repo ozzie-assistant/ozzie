@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use chrono::{Duration, Utc};
 use tracing::warn;
 
-use ozzie_core::domain::PageStore;
+use ozzie_core::domain::{MemorySchema, PageStore};
 use ozzie_memory::Store;
 
 /// A warning detected by the wiki linter.
@@ -17,15 +17,23 @@ pub enum LintWarning {
         slug: String,
         missing_sources: Vec<String>,
     },
+    /// A page whose content exceeds the schema's max size.
+    OversizedPage {
+        page_id: String,
+        slug: String,
+        chars: usize,
+        max: usize,
+    },
 }
 
 /// Runs a lightweight lint pass over pages and entries.
 ///
-/// Detects orphan entries (>7 days, not covered by any page) and stale pages
-/// (all source entries gone). Results are logged as warnings.
+/// Detects orphan entries (>7 days, not covered by any page), stale pages
+/// (all source entries gone), and oversized pages (above schema threshold).
 pub async fn lint(
     page_store: &dyn PageStore,
     memory_store: &dyn Store,
+    schema: Option<&MemorySchema>,
 ) -> Vec<LintWarning> {
     let mut warnings = Vec::new();
 
@@ -82,6 +90,23 @@ pub async fn lint(
         }
     }
 
+    // Oversized pages: content exceeds schema max
+    if let Some(schema) = schema {
+        for page in &pages {
+            match page_store.get(&page.id).await {
+                Ok((_, content)) if content.len() > schema.max_page_chars => {
+                    warnings.push(LintWarning::OversizedPage {
+                        page_id: page.id.clone(),
+                        slug: page.slug.clone(),
+                        chars: content.len(),
+                        max: schema.max_page_chars,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Log warnings
     for w in &warnings {
         match w {
@@ -90,6 +115,12 @@ pub async fn lint(
             }
             LintWarning::StalePage { page_id, slug, .. } => {
                 warn!(id = %page_id, slug = %slug, "lint: stale page (all sources gone)");
+            }
+            LintWarning::OversizedPage { page_id, slug, chars, max } => {
+                warn!(
+                    id = %page_id, slug = %slug, chars = chars, max = max,
+                    "lint: oversized page (will be split next dream pass)"
+                );
             }
         }
     }
@@ -197,7 +228,7 @@ mod tests {
             ],
         };
 
-        let warnings = lint(&page_store, &memory_store).await;
+        let warnings = lint(&page_store, &memory_store, None).await;
 
         let orphans: Vec<_> = warnings
             .iter()
@@ -221,7 +252,7 @@ mod tests {
             entries: vec![make_entry("m1", "Exists", 1)],
         };
 
-        let warnings = lint(&page_store, &memory_store).await;
+        let warnings = lint(&page_store, &memory_store, None).await;
 
         let stale: Vec<_> = warnings
             .iter()
@@ -242,7 +273,7 @@ mod tests {
             entries: vec![make_entry("m1", "Covered", 1)],
         };
 
-        let warnings = lint(&page_store, &memory_store).await;
+        let warnings = lint(&page_store, &memory_store, None).await;
         assert!(warnings.is_empty());
     }
 }

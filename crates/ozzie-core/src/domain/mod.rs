@@ -1,5 +1,6 @@
 mod capability;
 mod dream;
+mod memory_schema;
 mod message;
 mod ports;
 mod schedule;
@@ -10,6 +11,7 @@ mod wiki;
 
 pub use capability::*;
 pub use dream::*;
+pub use memory_schema::*;
 pub use message::*;
 pub use ports::*;
 pub use schedule::*;

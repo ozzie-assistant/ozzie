@@ -6,7 +6,7 @@ use chrono::Utc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use ozzie_core::domain::{DreamRecord, DreamStats, Message, PageStore};
+use ozzie_core::domain::{DreamRecord, DreamStats, MemorySchema, Message, PageStore};
 use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_llm::Provider;
 use ozzie_memory::{ImportanceLevel, MemoryEntry, MemoryType, Store};
@@ -170,11 +170,13 @@ impl DreamRunner {
 
         // Wiki page synthesis — runs after all sessions are classified.
         if let Some(ref page_store) = self.page_store {
+            let schema = MemorySchema::load(&self.ozzie_path);
             let synthesizer = Synthesizer::new(
                 self.memory_store.clone(),
                 page_store.clone(),
                 self.provider.clone(),
-            );
+            )
+            .with_schema(schema.clone());
             match synthesizer.synthesize().await {
                 Ok(syn_stats) => {
                     stats.pages_created = syn_stats.pages_created;
@@ -197,7 +199,7 @@ impl DreamRunner {
                 warn!(error = %e, "dream: index generation failed");
             }
 
-            let warnings = super::lint::lint(page_store.as_ref(), self.memory_store.as_ref()).await;
+            let warnings = super::lint::lint(page_store.as_ref(), self.memory_store.as_ref(), Some(&schema)).await;
             if !warnings.is_empty() {
                 info!(count = warnings.len(), "dream: lint warnings detected");
             }

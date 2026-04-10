@@ -3,24 +3,28 @@ use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 
-use ozzie_core::domain::{PageStore, WikiPage};
+use ozzie_core::domain::{MemorySchema, PageStore, WikiPage};
 use ozzie_llm::{ChatMessage, ChatRole, Provider};
 use ozzie_memory::Store;
 
-const SYNTHESIS_PROMPT: &str = r#"You are creating a wiki-style knowledge page from related memory entries.
+const BASE_SYNTHESIS_PROMPT: &str = r#"You are creating a wiki-style knowledge page from related memory entries.
 Synthesize a coherent, well-structured markdown page that captures all the information.
 Use markdown headers (##) for structure. Be comprehensive but not redundant.
-Write in the same language as the source entries.
 
 Respond with JSON only, no markdown fences:
 {"title": "Page Title", "slug": "url-safe-slug", "content": "markdown content...", "tags": ["tag1", "tag2"]}"#;
 
-const UPDATE_PROMPT: &str = r#"You are updating an existing wiki page with new information from memory entries.
+const BASE_UPDATE_PROMPT: &str = r#"You are updating an existing wiki page with new information from memory entries.
 Merge the new entries into the existing page, preserving structure and removing redundancy.
-Write in the same language as the source entries.
 
 Respond with JSON only, no markdown fences:
 {"title": "Page Title", "slug": "url-safe-slug", "content": "updated markdown content...", "tags": ["tag1", "tag2"]}"#;
+
+const SPLIT_PROMPT: &str = r#"The following wiki page is too long. Split it into 2-3 shorter, self-contained pages.
+Each page should cover a coherent sub-topic. Distribute the source memory IDs to the relevant sub-page.
+
+Respond with a JSON array only, no markdown fences:
+[{"title": "...", "slug": "...", "content": "...", "tags": [...], "source_ids": ["mem_..."]}]"#;
 
 /// Minimum entries sharing 2+ tags to form a cluster.
 const MIN_CLUSTER_SIZE: usize = 3;
@@ -32,6 +36,7 @@ const MIN_SHARED_TAGS: usize = 2;
 pub struct SynthesisStats {
     pub pages_created: usize,
     pub pages_updated: usize,
+    pub pages_split: usize,
     pub clusters_skipped: usize,
 }
 
@@ -43,6 +48,7 @@ pub struct Synthesizer {
     memory_store: Arc<dyn Store>,
     page_store: Arc<dyn PageStore>,
     provider: Arc<dyn Provider>,
+    schema: MemorySchema,
 }
 
 impl Synthesizer {
@@ -55,7 +61,45 @@ impl Synthesizer {
             memory_store,
             page_store,
             provider,
+            schema: MemorySchema::default(),
         }
+    }
+
+    pub fn with_schema(mut self, schema: MemorySchema) -> Self {
+        self.schema = schema;
+        self
+    }
+
+    fn build_synthesis_prompt(&self) -> String {
+        let mut prompt = BASE_SYNTHESIS_PROMPT.to_string();
+        if let Some(ref lang) = self.schema.language {
+            prompt.push_str(&format!("\nWrite in {lang}."));
+        } else {
+            prompt.push_str("\nWrite in the same language as the source entries.");
+        }
+        if !self.schema.instructions.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nAdditional conventions:\n{}",
+                self.schema.instructions
+            ));
+        }
+        prompt
+    }
+
+    fn build_update_prompt(&self) -> String {
+        let mut prompt = BASE_UPDATE_PROMPT.to_string();
+        if let Some(ref lang) = self.schema.language {
+            prompt.push_str(&format!("\nWrite in {lang}."));
+        } else {
+            prompt.push_str("\nWrite in the same language as the source entries.");
+        }
+        if !self.schema.instructions.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nAdditional conventions:\n{}",
+                self.schema.instructions
+            ));
+        }
+        prompt
     }
 
     /// Groups all active entries by tag affinity and creates/updates pages.
@@ -101,8 +145,9 @@ impl Synthesizer {
                 let page_id = find_best_page_for_cluster(&cluster.entry_ids, &existing_source_map);
                 if let Some(page_id) = page_id {
                     match self.update_page(&page_id, &uncovered).await {
-                        Ok(()) => {
+                        Ok(split_count) => {
                             stats.pages_updated += 1;
+                            stats.pages_split += split_count;
                             debug!(page_id = %page_id, new_entries = uncovered.len(), "page updated");
                         }
                         Err(e) => {
@@ -115,8 +160,9 @@ impl Synthesizer {
 
             // New cluster — synthesize a new page
             match self.create_page(&cluster.entry_ids, &cluster.shared_tags).await {
-                Ok(slug) => {
+                Ok((slug, split_count)) => {
                     stats.pages_created += 1;
+                    stats.pages_split += split_count;
                     debug!(slug = %slug, entries = cluster.entry_ids.len(), "page created");
                 }
                 Err(e) => {
@@ -145,11 +191,11 @@ impl Synthesizer {
         &self,
         entry_ids: &[String],
         _shared_tags: &[String],
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<(String, usize)> {
         let entries_text = self.format_entries(entry_ids).await?;
 
         let messages = vec![
-            ChatMessage::text(ChatRole::System, SYNTHESIS_PROMPT),
+            ChatMessage::text(ChatRole::System, self.build_synthesis_prompt()),
             ChatMessage::text(
                 ChatRole::User,
                 format!("Create a wiki page from these memory entries:\n\n{entries_text}"),
@@ -175,14 +221,17 @@ impl Synthesizer {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        Ok(page.slug)
+        // Split if oversized
+        let split_count = self.split_if_needed(&page, &parsed.content).await?;
+
+        Ok((page.slug, split_count))
     }
 
     async fn update_page(
         &self,
         page_id: &str,
         new_entry_ids: &[String],
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<usize> {
         let (mut page, existing_content) = self
             .page_store
             .get(page_id)
@@ -192,7 +241,7 @@ impl Synthesizer {
         let new_entries_text = self.format_entries(new_entry_ids).await?;
 
         let messages = vec![
-            ChatMessage::text(ChatRole::System, UPDATE_PROMPT),
+            ChatMessage::text(ChatRole::System, self.build_update_prompt()),
             ChatMessage::text(
                 ChatRole::User,
                 format!(
@@ -220,7 +269,9 @@ impl Synthesizer {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        Ok(())
+        // Split if oversized
+        let split_count = self.split_if_needed(&page, &parsed.content).await?;
+        Ok(split_count)
     }
 
     async fn format_entries(&self, entry_ids: &[String]) -> anyhow::Result<String> {
@@ -244,6 +295,81 @@ impl Synthesizer {
             }
         }
         Ok(text)
+    }
+
+    /// Splits an oversized page into 2-3 sub-pages via LLM.
+    /// Returns the number of new pages created (0 if no split needed).
+    async fn split_if_needed(
+        &self,
+        page: &WikiPage,
+        content: &str,
+    ) -> anyhow::Result<usize> {
+        if content.len() <= self.schema.max_page_chars {
+            return Ok(0);
+        }
+
+        debug!(
+            slug = %page.slug,
+            chars = content.len(),
+            max = self.schema.max_page_chars,
+            "page exceeds max size, splitting"
+        );
+
+        let source_ids_text = page.source_ids.join(", ");
+        let messages = vec![
+            ChatMessage::text(ChatRole::System, SPLIT_PROMPT),
+            ChatMessage::text(
+                ChatRole::User,
+                format!(
+                    "Page to split:\n\n# {}\n\n{}\n\n---\nSource memory IDs: [{}]",
+                    page.title, content, source_ids_text,
+                ),
+            ),
+        ];
+
+        let response = self.provider.chat(&messages, &[]).await?;
+        let sub_pages = parse_split_response(&response.content)?;
+
+        if sub_pages.len() < 2 {
+            warn!(slug = %page.slug, "split produced fewer than 2 pages, skipping");
+            return Ok(0);
+        }
+
+        // Delete the original oversized page
+        if let Err(e) = self.page_store.delete(&page.id).await {
+            warn!(id = %page.id, error = %e, "failed to delete original page before split");
+        }
+
+        // Create sub-pages
+        let mut created = 0;
+        for sp in sub_pages {
+            let mut sub_page = WikiPage {
+                id: String::new(),
+                title: sp.title,
+                slug: sp.slug,
+                tags: sp.tags,
+                source_ids: sp.source_ids,
+                created_at: Default::default(),
+                updated_at: Default::default(),
+                revision: 0,
+            };
+
+            match self
+                .page_store
+                .upsert(&mut sub_page, &sp.content)
+                .await
+            {
+                Ok(()) => {
+                    created += 1;
+                    debug!(slug = %sub_page.slug, "split sub-page created");
+                }
+                Err(e) => {
+                    warn!(slug = %sub_page.slug, error = %e, "failed to create split sub-page");
+                }
+            }
+        }
+
+        Ok(created)
     }
 }
 
@@ -406,6 +532,50 @@ fn parse_page_response(raw: &str) -> anyhow::Result<PageResponse> {
     }
 
     anyhow::bail!("failed to parse page synthesis response")
+}
+
+#[derive(serde::Deserialize)]
+struct SplitPageEntry {
+    title: String,
+    slug: String,
+    content: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    source_ids: Vec<String>,
+}
+
+fn parse_split_response(raw: &str) -> anyhow::Result<Vec<SplitPageEntry>> {
+    if let Ok(resp) = serde_json::from_str::<Vec<SplitPageEntry>>(raw) {
+        return Ok(resp);
+    }
+
+    let stripped = extract_json_array(raw);
+    if let Ok(resp) = serde_json::from_str::<Vec<SplitPageEntry>>(stripped) {
+        return Ok(resp);
+    }
+
+    anyhow::bail!("failed to parse split response")
+}
+
+fn extract_json_array(s: &str) -> &str {
+    let s = s.trim();
+    if let Some(start) = s.find("```json") {
+        let after = &s[start + 7..];
+        if let Some(end) = after.find("```") {
+            return after[..end].trim();
+        }
+    }
+    if let Some(start) = s.find("```") {
+        let after = &s[start + 3..];
+        if let Some(end) = after.find("```") {
+            return after[..end].trim();
+        }
+    }
+    if let (Some(start), Some(end)) = (s.find('['), s.rfind(']')) {
+        return &s[start..=end];
+    }
+    s
 }
 
 fn extract_json(s: &str) -> &str {
