@@ -181,6 +181,17 @@ Send a user message. Triggers the LLM inference loop.
 }
 ```
 
+**With images (multimodal):**
+```json
+{
+  "session_id": "sess_xyz",
+  "text": "What's in this image?",
+  "images": [
+    { "base64": "iVBORw0K...", "media_type": "image/png", "alt": "screenshot" }
+  ]
+}
+```
+
 **Result:**
 ```json
 { "accepted": true }
@@ -189,6 +200,28 @@ Send a user message. Triggers the LLM inference loop.
 The response is immediate. LLM output arrives as `assistant.stream` and `assistant.message` notifications.
 
 **Message buffering:** If a ReactLoop is already active for this session, the message is buffered and injected before the next LLM call. Multiple rapid messages are batched together. This is transparent to connectors.
+
+---
+
+### `send_connector_message`
+
+Route a message through a connector (Discord, File bridge, etc.).
+
+**Params:**
+```json
+{
+  "connector": "discord",
+  "channel_id": "guild_123#channel_456",
+  "author": "user#1234",
+  "content": "Hello from Discord",
+  "message_id": "msg_789"
+}
+```
+
+**Result:**
+```json
+{ "accepted": true }
+```
 
 ---
 
@@ -538,13 +571,47 @@ Client                              Server
 
 ## HTTP Endpoints
 
+### Core
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/health` | No | Health check → `{"status":"ok"}` |
 | `GET` | `/api/ws` | **Yes** | WebSocket upgrade endpoint |
 | `GET` | `/api/events?limit=50&session=...&type=...` | **Yes** | Recent event history |
-| `GET` | `/api/sessions` | **Yes** | List all sessions |
-| `GET` | `/api/tasks?session_id=...` | **Yes** | List tasks |
+| `GET` | `/api/sessions` | No | List all sessions with metadata |
+
+### Memory & Wiki
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/memory/entries` | **Yes** | List all memory entries (metadata) |
+| `GET` | `/api/memory/entries/{id}` | **Yes** | Entry with full content |
+| `GET` | `/api/memory/entries/search?q=...&limit=20` | **Yes** | FTS5 search in entries |
+| `GET` | `/api/memory/pages` | **Yes** | List wiki pages (metadata) |
+| `GET` | `/api/memory/pages/{slug}` | **Yes** | Wiki page with full content |
+| `GET` | `/api/memory/pages/search?q=...&limit=20` | **Yes** | FTS5 search in pages |
+| `GET` | `/api/memory/index` | **Yes** | Structured index (pages + stats) |
+| `GET` | `/api/memory/schema` | **Yes** | Memory schema (max_page_chars, language, instructions) |
+
+### User Profile
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/profile` | **Yes** | Full user profile |
+| `PUT` | `/api/profile` | **Yes** | Partial update: `{name?, tone?, language?}` |
+| `GET` | `/api/profile/whoami` | **Yes** | Whoami entries only |
+
+### Device Pairing
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/pair` | No | Create pairing request → `{request_id, expires_at}` |
+| `GET` | `/api/pair/{id}` | No | Poll pairing status → `{status, device_id?, token?}` |
+| `GET` | `/api/pairings/requests` | **Yes** | List pending pairing requests |
+| `POST` | `/api/pairings/requests/{id}/approve` | **Yes** | Approve a pairing request |
+| `POST` | `/api/pairings/requests/{id}/reject` | **Yes** | Reject a pairing request |
+| `GET` | `/api/pairings/chats` | **Yes** | List approved chat pairings |
+| `DELETE` | `/api/pairings/chats` | **Yes** | Remove a chat pairing |
 
 ---
 
