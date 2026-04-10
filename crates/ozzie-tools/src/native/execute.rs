@@ -132,6 +132,7 @@ impl Tool for ExecuteTool {
             let mut cmd = tokio::process::Command::new(shell);
             cmd.args(&shell_args);
             cmd.current_dir(work_dir);
+            ozzie_core::conscience::strip_blocked_env(&mut cmd);
 
             tokio::time::timeout(timeout, cmd.output())
                 .await
@@ -192,5 +193,25 @@ mod tests {
         let tool = ExecuteTool { sandbox: None };
         let result = tool.run("not json").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn blocked_env_vars_not_leaked() {
+        // Set a blocked var in our process, then verify the subprocess can't see it.
+        unsafe { std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-secret") };
+
+        let tool = ExecuteTool { sandbox: None };
+        let result = tool
+            .run(r#"{"command": "env"}"#)
+            .await
+            .unwrap();
+
+        let parsed: ExecuteResult = serde_json::from_str(&result).unwrap();
+        assert!(
+            !parsed.stdout.contains("ANTHROPIC_API_KEY"),
+            "blocked env var leaked to subprocess"
+        );
+
+        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
     }
 }

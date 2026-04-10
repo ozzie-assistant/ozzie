@@ -68,6 +68,7 @@ impl SandboxExecutor for LandlockExecutor {
         let mut cmd = tokio::process::Command::new("sh");
         cmd.args(["-c", command]);
         cmd.current_dir(work_dir);
+        ozzie_core::conscience::strip_blocked_env(&mut cmd);
 
         // SAFETY: pre_exec runs between fork and exec in the child process.
         // We only call async-signal-safe functions and Landlock syscalls.

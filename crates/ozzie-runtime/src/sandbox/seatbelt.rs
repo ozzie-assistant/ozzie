@@ -39,6 +39,7 @@ impl SandboxExecutor for SeatbeltExecutor {
             command,
         ]);
         cmd.current_dir(work_dir);
+        ozzie_core::conscience::strip_blocked_env(&mut cmd);
 
         let output = tokio::time::timeout(timeout, cmd.output())
             .await

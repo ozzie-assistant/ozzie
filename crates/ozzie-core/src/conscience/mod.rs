@@ -1,12 +1,14 @@
 mod ast_guard;
+mod constraint;
+mod env_filter;
 mod permissions;
 mod sandbox;
-mod constraint;
 mod scrub;
 mod wrapper;
 
 pub use ast_guard::AstGuard;
 pub use constraint::{ConstraintGuard, ToolConstraints};
+pub use env_filter::{BLOCKED_ENV_VARS, strip_blocked_env};
 pub use permissions::ToolPermissions;
 pub use sandbox::{SandboxGuard, SandboxToolType};
 pub use scrub::scrub_credentials;
