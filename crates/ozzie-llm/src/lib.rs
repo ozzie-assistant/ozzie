@@ -5,6 +5,7 @@ pub(crate) mod helpers;
 pub mod providers;
 mod resilience;
 pub mod schema;
+pub mod toolshim;
 
 pub use auth::*;
 pub use errors::*;

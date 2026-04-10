@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     helpers::{self, LineProtocol},
-    ChatDelta, ChatMessage, ChatResponse, LlmError, Provider, StopReason, ToolCall,
+    ChatDelta, ChatMessage, ChatResponse, ChatRole, LlmError, Provider, StopReason, ToolCall,
     ToolDefinition, TokenUsage,
 };
 
@@ -18,10 +18,23 @@ pub struct OllamaProvider {
     client: reqwest::Client,
     base_url: String,
     model: String,
+    /// When false, tools are injected as XML in the system prompt instead of
+    /// using the native Ollama tool calling API. Set to false for models that
+    /// don't have the `tool_use` capability.
+    native_tool_calling: bool,
 }
 
 impl OllamaProvider {
     pub fn new(model: &str, base_url: Option<&str>, timeout: Option<Duration>) -> Self {
+        Self::with_native_tools(model, base_url, timeout, true)
+    }
+
+    pub fn with_native_tools(
+        model: &str,
+        base_url: Option<&str>,
+        timeout: Option<Duration>,
+        native_tool_calling: bool,
+    ) -> Self {
         let timeout = timeout.unwrap_or(Duration::from_secs(300));
         let client = reqwest::Client::builder()
             .timeout(timeout)
@@ -35,6 +48,7 @@ impl OllamaProvider {
                 .trim_end_matches('/')
                 .to_string(),
             model: model.to_string(),
+            native_tool_calling,
         }
     }
 
@@ -49,16 +63,29 @@ impl OllamaProvider {
         messages: &[ChatMessage],
         tools: &[ToolDefinition],
     ) -> OllamaRequest {
+        // When native tool calling is disabled, inject the XML tool template
+        // into the first system message and don't send tools to the API.
+        let use_shim = !self.native_tool_calling && !tools.is_empty();
+
         let api_messages: Vec<OllamaMessage> = messages
             .iter()
-            .map(|m| {
+            .enumerate()
+            .map(|(i, m)| {
+                let mut content = m.text_content();
+
+                // Prepend tool template to the first system message
+                if use_shim && i == 0 && m.role == ChatRole::System {
+                    let template = crate::toolshim::tool_prompt_template(tools);
+                    content = format!("{content}\n\n{template}");
+                }
+
                 let images: Vec<String> = m.content.iter().filter_map(|p| match p {
                     ozzie_types::ContentPart::ImageInline { data, .. } => Some(data.clone()),
                     _ => None,
                 }).collect();
                 OllamaMessage {
                     role: m.role.to_string(),
-                    content: m.text_content(),
+                    content,
                     images: if images.is_empty() { None } else { Some(images) },
                     tool_calls: if m.tool_calls.is_empty() {
                     None
@@ -79,7 +106,7 @@ impl OllamaProvider {
             })
             .collect();
 
-        let api_tools: Option<Vec<OllamaTool>> = if tools.is_empty() {
+        let api_tools: Option<Vec<OllamaTool>> = if tools.is_empty() || use_shim {
             None
         } else {
             Some(
@@ -160,9 +187,7 @@ impl Provider for OllamaProvider {
             .map_err(|e| LlmError::Other(format!("parse response: {e}")))?;
 
         let mut tool_calls = Vec::new();
-        let has_tools;
         if let Some(tcs) = &api_resp.message.tool_calls {
-            has_tools = !tcs.is_empty();
             for (i, tc) in tcs.iter().enumerate() {
                 tool_calls.push(ToolCall {
                     id: format!("call_{i}"),
@@ -170,18 +195,30 @@ impl Provider for OllamaProvider {
                     arguments: tc.function.arguments.clone(),
                 });
             }
-        } else {
-            has_tools = false;
         }
 
-        let stop_reason = if has_tools {
+        // XML fallback: some models emit tool calls as XML in content
+        let mut content = api_resp.message.content;
+        if tool_calls.is_empty()
+            && let Some((parsed, remaining)) =
+                crate::toolshim::parse_xml_tool_calls(&content)
+        {
+            tracing::debug!(
+                count = parsed.len(),
+                "ollama: parsed XML tool calls (shim)"
+            );
+            tool_calls = parsed;
+            content = remaining;
+        }
+
+        let stop_reason = if !tool_calls.is_empty() {
             Some(StopReason::ToolUse)
         } else {
             Some(StopReason::Stop)
         };
 
         Ok(ChatResponse {
-            content: api_resp.message.content,
+            content,
             tool_calls,
             usage: TokenUsage {
                 input_tokens: api_resp.prompt_eval_count.unwrap_or(0),

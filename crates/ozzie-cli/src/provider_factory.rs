@@ -67,17 +67,26 @@ pub fn build_provider(
             max_tokens,
             timeout,
         )),
-        Driver::Ollama => Arc::new(ozzie_llm::providers::OllamaProvider::new(
-            model, base_url, timeout,
-        )),
+        Driver::Ollama => {
+            let native_tools = provider_cfg
+                .capabilities
+                .contains(&ozzie_core::domain::ModelCapability::ToolUse);
+            Arc::new(ozzie_llm::providers::OllamaProvider::with_native_tools(
+                model, base_url, timeout, native_tools,
+            ))
+        }
         Driver::OpenAiCompatible | Driver::LmStudio | Driver::Vllm => {
-            Arc::new(ozzie_llm::providers::OpenAIProvider::new(
+            let native_tools = provider_cfg
+                .capabilities
+                .contains(&ozzie_core::domain::ModelCapability::ToolUse);
+            Arc::new(ozzie_llm::providers::OpenAIProvider::with_native_tools(
                 auth,
                 Some(model),
                 base_url,
                 max_tokens,
                 timeout,
                 Some(driver.as_str()),
+                native_tools,
             ))
         }
     };
