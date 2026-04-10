@@ -46,14 +46,17 @@ async fn single_tool_file_read() {
     );
     client.send_message(&prompt).await.expect("send message");
 
-    let frames = collect_until_assistant_message(&mut client, Duration::from_secs(120)).await;
+    let frames = collect_until_assistant_message(&mut client, Duration::from_secs(180)).await;
 
     assert!(
         count_events(&frames, EventKind::ToolCall) > 0,
         "should have at least one tool call"
     );
 
-    let text = extract_assistant_text(&frames).expect("assistant response");
+    let text = extract_assistant_text(&frames).unwrap_or_else(|| panic!(
+            "no assistant.message frame received ({} frames collected, likely timeout — is Ollama overloaded?)",
+            frames.len()
+        ));
     let lower = text.to_lowercase();
     assert!(
         lower.contains("forty-two") || lower.contains("42"),
@@ -88,14 +91,17 @@ async fn multi_step_write_then_read() {
     );
     client.send_message(&prompt).await.expect("send message");
 
-    let frames = collect_until_assistant_message(&mut client, Duration::from_secs(120)).await;
+    let frames = collect_until_assistant_message(&mut client, Duration::from_secs(180)).await;
 
     assert!(
         count_events(&frames, EventKind::ToolCall) >= 2,
         "should have at least 2 tool calls (write + read)"
     );
 
-    let text = extract_assistant_text(&frames).expect("assistant response");
+    let text = extract_assistant_text(&frames).unwrap_or_else(|| panic!(
+            "no assistant.message frame received ({} frames collected, likely timeout — is Ollama overloaded?)",
+            frames.len()
+        ));
     let lower = text.to_lowercase();
     assert!(
         lower.contains("hello world") || lower.contains("hello"),
