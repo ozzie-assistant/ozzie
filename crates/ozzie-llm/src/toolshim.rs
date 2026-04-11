@@ -297,12 +297,12 @@ mod tests {
     }
 
     /// Test fixture for template tests.
+    #[allow(dead_code)]
     #[derive(schemars::JsonSchema)]
     struct FileReadArgs {
         /// Path to the file to read.
         path: String,
         /// Maximum number of lines to return.
-        #[allow(dead_code)]
         max_lines: Option<u32>,
     }
 }

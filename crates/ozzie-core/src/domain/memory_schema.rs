@@ -49,8 +49,8 @@ impl MemorySchema {
 fn parse(text: &str) -> Option<MemorySchema> {
     let (yaml, body) = split_frontmatter(text)?;
 
-    let mut schema = MemorySchema::default();
-    schema.instructions = body.trim().to_string();
+    let mut max_page_chars = DEFAULT_MAX_PAGE_CHARS;
+    let mut language = None;
 
     for line in yaml.lines() {
         let line = line.trim();
@@ -60,12 +60,12 @@ fn parse(text: &str) -> Option<MemorySchema> {
             match key {
                 "max_page_chars" => {
                     if let Ok(n) = value.parse::<usize>() {
-                        schema.max_page_chars = n;
+                        max_page_chars = n;
                     }
                 }
                 "language" => {
                     if !value.is_empty() {
-                        schema.language = Some(value.to_string());
+                        language = Some(value.to_string());
                     }
                 }
                 _ => {}
@@ -73,7 +73,11 @@ fn parse(text: &str) -> Option<MemorySchema> {
         }
     }
 
-    Some(schema)
+    Some(MemorySchema {
+        max_page_chars,
+        language,
+        instructions: body.trim().to_string(),
+    })
 }
 
 fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
