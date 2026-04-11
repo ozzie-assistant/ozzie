@@ -62,7 +62,12 @@ impl UserProfile {
     }
 
     /// Adds a whoami entry from a conversation observation.
+    ///
+    /// Skips if an entry with the same `info` text already exists (any source).
     pub fn add_observation(&mut self, info: String) {
+        if self.whoami.iter().any(|e| e.info == info) {
+            return;
+        }
         let today = chrono::Utc::now().date_naive();
         self.whoami.push(WhoamiEntry {
             info,
@@ -83,5 +88,37 @@ impl UserProfile {
             .iter()
             .filter(|e| e.source != "intro")
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_profile() -> UserProfile {
+        UserProfile::new("Test".into(), vec!["intro fact".into()])
+    }
+
+    #[test]
+    fn add_observation_deduplicates() {
+        let mut profile = test_profile();
+        profile.add_observation("likes Rust".into());
+        profile.add_observation("likes Rust".into());
+        assert_eq!(profile.whoami.len(), 2); // intro + 1 observation
+    }
+
+    #[test]
+    fn add_observation_skips_existing_intro() {
+        let mut profile = test_profile();
+        profile.add_observation("intro fact".into());
+        assert_eq!(profile.whoami.len(), 1); // only the intro
+    }
+
+    #[test]
+    fn add_observation_allows_different_entries() {
+        let mut profile = test_profile();
+        profile.add_observation("fact A".into());
+        profile.add_observation("fact B".into());
+        assert_eq!(profile.whoami.len(), 3); // intro + A + B
     }
 }
