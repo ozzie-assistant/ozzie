@@ -199,6 +199,7 @@ impl FileBridge {
                         &msg.author,
                         &msg.content,
                         None,
+                        None,
                     )
                     .await
                 {

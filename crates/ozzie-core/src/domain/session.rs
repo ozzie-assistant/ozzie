@@ -84,6 +84,9 @@ pub struct Session {
     /// Policy name governing tool access for this session (set by connector pairing).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_name: Option<String>,
+    /// Active project for this session (set by `open_project` tool).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
 }
 
 impl Session {
@@ -107,6 +110,7 @@ impl Session {
             approved_tools: Vec::new(),
             metadata: HashMap::new(),
             policy_name: None,
+            project_id: None,
         }
     }
 

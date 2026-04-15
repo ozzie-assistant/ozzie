@@ -106,11 +106,29 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         bus.clone(),
         sessions.clone(),
         memory_store.clone(),
-        skill_registry,
+        skill_registry.clone(),
         provider_registry.clone(),
         actor_pool.clone(),
     )
     .await?;
+
+    // Project workspaces
+    let project_registry = init_projects(&cfg);
+    native::register_project_tools(
+        &tool_registry,
+        project_registry.clone(),
+        skill_registry.clone(),
+        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        resolve_workspaces_root(&cfg),
+    );
+    native::register_create_skill_tool(
+        &tool_registry,
+        skill_registry,
+        project_registry.clone(),
+        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        skills_path(),
+    );
+    info!(count = project_registry.len(), "projects discovered");
 
     let discord_db: Arc<dyn ConfigStore<DiscordDatabase>> =
         Arc::new(FileStorage::new(discord_db_path()));
@@ -180,6 +198,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
             .and_then(|p| p.context_window),
         user_profile,
         blob_store: Some(Arc::new(ozzie_runtime::FsBlobStore::new(ozzie_path()))),
+        project_registry: Some(project_registry.clone()),
     }));
     runner.start();
 
@@ -206,7 +225,8 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
             &ozzie_path(),
             bus.clone(),
         )
-        .with_page_store(page_store.clone() as Arc<dyn ozzie_core::domain::PageStore>),
+        .with_page_store(page_store.clone() as Arc<dyn ozzie_core::domain::PageStore>)
+        .with_project_registry(project_registry.clone()),
     );
     dream_runner.start().await;
     info!("dream consolidation started (12h interval)");
@@ -1140,4 +1160,36 @@ impl ozzie_runtime::scheduler::ScheduleHandler for DirectScheduleHandler {
 
         self.pool.release(slot);
     }
+}
+
+// ---- Projects ----
+
+fn resolve_workspaces_root(cfg: &config::Config) -> std::path::PathBuf {
+    if let Some(ref root) = cfg.projects.workspaces_root {
+        let expanded = expand_tilde(root);
+        if expanded.is_absolute() {
+            return expanded;
+        }
+    }
+    ozzie_path().join("working")
+}
+
+fn init_projects(cfg: &config::Config) -> Arc<ozzie_core::project::ProjectRegistry> {
+    let root = resolve_workspaces_root(cfg);
+    let projects = ozzie_core::project::discover_projects(&root, &cfg.projects.extra_paths);
+    let registry = Arc::new(ozzie_core::project::ProjectRegistry::new());
+    for project in projects {
+        registry.register(project);
+    }
+    registry
+}
+
+/// Expands `~` prefix to the user's home directory.
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return std::path::PathBuf::from(home).join(rest);
+    }
+    std::path::PathBuf::from(path)
 }

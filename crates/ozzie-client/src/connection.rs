@@ -217,6 +217,7 @@ impl OzzieClient {
         author: &str,
         content: &str,
         message_id: Option<&str>,
+        server_id: Option<&str>,
     ) -> Result<(), ClientError> {
         let mut params = serde_json::json!({
             "connector": connector,
@@ -226,6 +227,9 @@ impl OzzieClient {
         });
         if let Some(mid) = message_id {
             params["message_id"] = serde_json::json!(mid);
+        }
+        if let Some(sid) = server_id {
+            params["server_id"] = serde_json::json!(sid);
         }
         self.request("send_connector_message", params).await?;
         Ok(())

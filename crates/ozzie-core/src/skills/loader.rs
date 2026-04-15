@@ -90,6 +90,7 @@ pub fn parse_skill_md(path: &Path) -> Result<SkillMD, SkillLoadError> {
             dir,
             workflow: None,
             triggers: fm.triggers,
+            source: Default::default(),
         });
     }
 
@@ -112,6 +113,7 @@ pub fn parse_skill_md(path: &Path) -> Result<SkillMD, SkillLoadError> {
         dir,
         workflow: None,
         triggers: None,
+        source: Default::default(),
     })
 }
 
@@ -266,6 +268,7 @@ mod tests {
                 dir: String::new(),
                 workflow: None,
                 triggers: None,
+                source: Default::default(),
             },
         ];
         let descs = skill_descriptions(&skills);

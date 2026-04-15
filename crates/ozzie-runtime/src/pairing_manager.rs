@@ -289,6 +289,22 @@ impl PairingManager {
             },
         ));
 
+        // Notify the user on the originating connector that they've been paired.
+        if !identity.platform.is_empty() && !identity.channel_id.is_empty() {
+            self.bus.publish(Event::new(
+                EventSource::Agent,
+                EventPayload::ConnectorReply {
+                    connector: identity.platform.clone(),
+                    channel_id: identity.channel_id.clone(),
+                    content: format!(
+                        "You're paired with policy `{policy_name}`. You can now talk to me."
+                    ),
+                    reply_to_id: None,
+                    feedback: false,
+                },
+            ));
+        }
+
         Ok(())
     }
 

@@ -17,12 +17,15 @@ use crate::SessionStore;
 use super::classifier;
 use super::record_store::DreamRecordStore;
 use super::synthesizer::Synthesizer;
+use super::workspace_record::{WorkspaceRecord, WorkspaceRecordStore};
+use super::workspace_scanner;
 
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60); // 12 hours
 const DEFAULT_ACTIVE_MIN_AGE: Duration = Duration::from_secs(2 * 60 * 60); // 2 hours
 const MIN_MESSAGES_TO_PROCESS: usize = 4;
 
-/// Runs periodic dream consolidation — extracts lasting knowledge from conversations.
+/// Runs periodic dream consolidation — extracts lasting knowledge from conversations
+/// and project workspaces.
 pub struct DreamRunner {
     sessions: Arc<dyn SessionStore>,
     memory_store: Arc<dyn Store>,
@@ -32,6 +35,7 @@ pub struct DreamRunner {
     ozzie_path: PathBuf,
     interval: Duration,
     active_min_age: Duration,
+    project_registry: Option<Arc<ozzie_core::project::ProjectRegistry>>,
     cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
@@ -52,6 +56,7 @@ impl DreamRunner {
             ozzie_path: ozzie_path.to_path_buf(),
             interval: DEFAULT_INTERVAL,
             active_min_age: DEFAULT_ACTIVE_MIN_AGE,
+            project_registry: None,
             cancel: Mutex::new(None),
         }
     }
@@ -64,6 +69,15 @@ impl DreamRunner {
 
     pub fn with_interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
+        self
+    }
+
+    /// Enables workspace scanning for project consolidation.
+    pub fn with_project_registry(
+        mut self,
+        registry: Arc<ozzie_core::project::ProjectRegistry>,
+    ) -> Self {
+        self.project_registry = Some(registry);
         self
     }
 
@@ -168,7 +182,141 @@ impl DreamRunner {
             }
         }
 
-        // Wiki page synthesis — runs after all sessions are classified.
+        // Workspace scanning — runs after session classification.
+        if let Some(ref project_registry) = self.project_registry {
+            let ws_record_store = WorkspaceRecordStore::new(&self.ozzie_path);
+            let ws_records = ws_record_store.load_all();
+            let now = Utc::now();
+
+            for manifest in project_registry.all() {
+                // Only scan projects with memory config
+                let Some(ref mem_config) = manifest.memory else {
+                    continue;
+                };
+
+                // Check scan_cron — if set, only scan when the cron matches
+                if let Some(ref cron_spec) = mem_config.scan_cron {
+                    match crate::scheduler::CronExpr::parse(cron_spec) {
+                        Ok(cron) => {
+                            if !cron.matches(&now) {
+                                continue;
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                project = %manifest.name,
+                                cron = %cron_spec,
+                                error = %e,
+                                "invalid scan_cron, skipping"
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                let previous = ws_records.get(&manifest.name);
+
+                match workspace_scanner::scan_workspace(
+                    self.provider.as_ref(),
+                    &manifest,
+                    previous,
+                )
+                .await
+                {
+                    Ok(Some(result)) => {
+                        let mut record = previous.cloned().unwrap_or_else(|| WorkspaceRecord {
+                            project_name: manifest.name.clone(),
+                            last_commit: String::new(),
+                            memory_ids: Vec::new(),
+                            updated_at: Utc::now(),
+                        });
+
+                        // Save extracted memories
+                        for mem_entry in &result.extraction.memory {
+                            let mem_type =
+                                mem_entry.memory_type.parse().unwrap_or(MemoryType::Context);
+                            let now = Utc::now();
+
+                            let mut entry = MemoryEntry {
+                                id: String::new(),
+                                title: mem_entry.title.clone(),
+                                source: format!("workspace:{}", manifest.name),
+                                memory_type: mem_type,
+                                tags: mem_entry.tags.clone(),
+                                created_at: now,
+                                updated_at: now,
+                                last_used_at: now,
+                                confidence: 0.8,
+                                importance: ImportanceLevel::Normal,
+                                embedding_model: String::new(),
+                                indexed_at: None,
+                                merged_into: None,
+                            };
+
+                            match self
+                                .memory_store
+                                .create(&mut entry, &mem_entry.content)
+                                .await
+                            {
+                                Ok(()) => {
+                                    record.memory_ids.push(entry.id.clone());
+                                    stats.memories_created += 1;
+                                    debug!(
+                                        id = %entry.id,
+                                        project = %manifest.name,
+                                        title = %entry.title,
+                                        "workspace: memory created"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        project = %manifest.name,
+                                        title = %mem_entry.title,
+                                        error = %e,
+                                        "workspace: failed to create memory"
+                                    );
+                                }
+                            }
+                        }
+
+                        // Save profile entries
+                        if !result.extraction.profile.is_empty() {
+                            if let Err(e) =
+                                self.save_profile_entries(&result.extraction.profile)
+                            {
+                                error!(error = %e, "workspace: failed to save profile entries");
+                            } else {
+                                stats.profile_entries_added +=
+                                    result.extraction.profile.len();
+                            }
+                        }
+
+                        record.last_commit = result.head_commit;
+                        record.updated_at = Utc::now();
+
+                        if let Err(e) = ws_record_store.save(&record) {
+                            error!(
+                                project = %manifest.name,
+                                error = %e,
+                                "workspace: failed to save record"
+                            );
+                        }
+                    }
+                    Ok(None) => {
+                        // Nothing changed
+                    }
+                    Err(e) => {
+                        warn!(
+                            project = %manifest.name,
+                            error = %e,
+                            "workspace: scan failed"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Wiki page synthesis — runs after all sessions and workspaces are classified.
         if let Some(ref page_store) = self.page_store {
             let schema = MemorySchema::load(&self.ozzie_path);
             let synthesizer = Synthesizer::new(
@@ -403,6 +551,7 @@ mod tests {
             approved_tools: Vec::new(),
             metadata: Default::default(),
             policy_name: None,
+            project_id: None,
         }
     }
 }

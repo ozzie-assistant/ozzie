@@ -188,6 +188,27 @@ pub fn actor_section(actors: &[super::super::actors::ActorInfo]) -> String {
     lines.join("\n")
 }
 
+/// Builds the active project section for the system prompt.
+pub fn project_section(name: &str, description: &str, path: &str, body: &str) -> String {
+    let mut lines = vec![
+        "## Active Project".to_string(),
+        format!("Name: {name}"),
+    ];
+
+    if !description.is_empty() {
+        lines.push(format!("Description: {description}"));
+    }
+
+    lines.push(format!("Path: {path}"));
+
+    if !body.is_empty() {
+        lines.push(String::new());
+        lines.push(body.to_string());
+    }
+
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

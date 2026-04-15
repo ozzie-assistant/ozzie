@@ -1,6 +1,18 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
+/// Tracks where a skill was loaded from.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SkillSource {
+    /// Loaded from `$OZZIE_PATH/skills/` or config additional dirs.
+    #[default]
+    Global,
+    /// Loaded from a project's `.ozzie/skills/` directory.
+    Project(String),
+    /// Created at runtime by the agent.
+    Agent,
+}
+
 /// Loaded skill definition (from SKILL.md + optional workflow.yaml).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillMD {
@@ -26,6 +38,9 @@ pub struct SkillMD {
     /// Optional schedule triggers.
     #[serde(default)]
     pub triggers: Option<TriggersDef>,
+    /// Where this skill was loaded from.
+    #[serde(skip, default)]
+    pub source: SkillSource,
 }
 
 /// YAML workflow definition.

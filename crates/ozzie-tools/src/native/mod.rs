@@ -4,8 +4,10 @@ mod execute;
 mod file;
 mod git;
 mod memory;
+mod project;
 mod schedule;
 mod session;
+mod skill_create;
 mod sub_agent;
 mod task;
 mod tool_search;
@@ -18,8 +20,10 @@ pub use execute::ExecuteTool;
 pub use file::{FileReadTool, FileWriteTool, GlobTool, GrepTool, ListDirTool};
 pub use git::GitTool;
 pub use memory::{ForgetMemoryTool, QueryMemoriesTool, StoreMemoryTool};
+pub use project::{CloseProjectTool, InitProjectTool, ListProjectsTool, OpenProjectTool};
 pub use schedule::{ListSchedulesTool, ScheduleTaskTool, TriggerScheduleTool, UnscheduleTaskTool};
 pub use session::UpdateSessionTool;
+pub use skill_create::CreateSkillTool;
 pub use sub_agent::SubAgentTool;
 pub use task::{RunSubtaskTool, DEFAULT_SUBTASK_TOOLS};
 pub use tool_search::ToolSearchTool;
@@ -157,6 +161,60 @@ pub fn register_session_tools(
         registry,
         Box::new(UpdateSessionTool::new(store)),
         UpdateSessionTool::spec(),
+    );
+}
+
+/// Registers the create_skill tool.
+pub fn register_create_skill_tool(
+    registry: &ToolRegistry,
+    skill_registry: std::sync::Arc<ozzie_core::skills::SkillRegistry>,
+    project_registry: std::sync::Arc<ozzie_core::project::ProjectRegistry>,
+    session_store: std::sync::Arc<dyn ozzie_core::domain::SessionStore>,
+    skills_path: std::path::PathBuf,
+) {
+    register(
+        registry,
+        Box::new(CreateSkillTool::new(
+            skill_registry,
+            project_registry,
+            session_store,
+            skills_path,
+        )),
+        CreateSkillTool::spec(),
+    );
+}
+
+/// Registers project tools (init_project, open_project, close_project, list_projects).
+pub fn register_project_tools(
+    registry: &ToolRegistry,
+    project_registry: std::sync::Arc<ozzie_core::project::ProjectRegistry>,
+    skill_registry: std::sync::Arc<ozzie_core::skills::SkillRegistry>,
+    session_store: std::sync::Arc<dyn ozzie_core::domain::SessionStore>,
+    workspaces_root: std::path::PathBuf,
+) {
+    register(
+        registry,
+        Box::new(InitProjectTool::new(project_registry.clone(), workspaces_root)),
+        InitProjectTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(OpenProjectTool::new(
+            project_registry.clone(),
+            skill_registry.clone(),
+            session_store.clone(),
+        )),
+        OpenProjectTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(CloseProjectTool::new(skill_registry, session_store)),
+        CloseProjectTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(ListProjectsTool::new(project_registry)),
+        ListProjectsTool::spec(),
     );
 }
 

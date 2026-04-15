@@ -8,6 +8,7 @@ pub mod events;
 pub mod layered;
 pub mod policy;
 pub mod profile;
+pub mod project;
 pub mod prompt;
 pub mod skills;
 pub mod storage;

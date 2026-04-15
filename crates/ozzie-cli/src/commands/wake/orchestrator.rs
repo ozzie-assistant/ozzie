@@ -153,6 +153,7 @@ pub async fn run<C: InputCollector>(
         web: ex.web,
         policies: ex.policies,
         sub_agents: ex.sub_agents,
+        projects: ex.projects,
     };
 
     // ── Validate ───────────────────────────────────────────────────────

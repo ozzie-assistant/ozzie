@@ -221,6 +221,8 @@ pub struct ReactConfig {
     pub repetition_window: usize,
     /// How many identical fingerprints in the window trigger a warning. Default: 3.
     pub repetition_threshold: usize,
+    /// Auto-commit file writes in the current workspace.
+    pub git_auto_commit: bool,
 }
 
 impl Default for ReactConfig {
@@ -237,6 +239,7 @@ impl Default for ReactConfig {
             cancel_token: None,
             repetition_window: 10,
             repetition_threshold: 3,
+            git_auto_commit: false,
         }
     }
 }
@@ -494,6 +497,7 @@ impl ReactLoop {
                     config.session_id.as_deref(),
                     config.work_dir.as_deref(),
                     config.observer.as_ref(),
+                    config.git_auto_commit,
                 )
                 .await;
 
@@ -538,6 +542,7 @@ async fn execute_tool_call(
     session_id: Option<&str>,
     work_dir: Option<&str>,
     observer: Option<&Arc<dyn ReactObserver>>,
+    git_auto_commit: bool,
 ) -> String {
     let resolved_name = resolve_tool_name(&tc.name, tool_map);
     let raw = match tool_map.get(&resolved_name) {
@@ -554,6 +559,7 @@ async fn execute_tool_call(
                     session_id: sid.to_string(),
                     work_dir: work_dir.map(|s| s.to_string()),
                     progress,
+                    git_auto_commit,
                     ..Default::default()
                 };
                 match TOOL_CTX.scope(ctx, async move { tool.run(&args_str).await }).await {

@@ -57,11 +57,12 @@ async fn set_secret(key: &str) -> anyhow::Result<()> {
     }
 
     let enc_svc = AgeEncryptionService::new(&ozzie_path());
-    let final_value = if enc_svc.is_available() {
-        enc_svc.encrypt(&value)?
-    } else {
-        value
-    };
+    if !enc_svc.is_available() {
+        anyhow::bail!(
+            "no encryption key found. Run `ozzie wake` to generate one."
+        );
+    }
+    let final_value = enc_svc.encrypt(&value)?;
 
     secrets::set_entry(&env_path, key, &final_value)?;
     println!("Secret {key} saved.");

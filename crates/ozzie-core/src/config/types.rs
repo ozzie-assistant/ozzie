@@ -39,6 +39,8 @@ pub struct Config {
     pub connectors: ConnectorsConfig,
     #[serde(default)]
     pub sub_agents: SubAgentsConfig,
+    #[serde(default)]
+    pub projects: ProjectsConfig,
 }
 
 impl Config {
@@ -829,6 +831,20 @@ pub enum ContextMode {
     TaskOnly,
     /// Sub-agent receives the conversation history (without user profile/memories).
     Conversation,
+}
+
+// ---- Projects ----
+
+/// Configuration for project workspaces discovery.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectsConfig {
+    /// Root directory for auto-discovered projects (scans `*/.ozzie/project.md`).
+    /// Defaults to `$OZZIE_PATH/working`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspaces_root: Option<String>,
+    /// Additional project paths outside workspaces_root (e.g. existing code repos).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_paths: Vec<String>,
 }
 
 // ---- Duration serde helper ----

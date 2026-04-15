@@ -66,6 +66,8 @@ pub struct EventRunnerConfig {
     pub user_profile: Option<UserProfile>,
     /// Blob store for resolving image references before LLM calls.
     pub blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
+    /// Project registry for prompt injection when a session has an active project.
+    pub project_registry: Option<Arc<ozzie_core::project::ProjectRegistry>>,
 }
 
 /// Listens for UserMessage events and runs the LLM, emitting
@@ -96,6 +98,8 @@ pub struct EventRunner {
     context_window: Option<usize>,
     /// Blob store for resolving image references.
     blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
+    /// Project registry for prompt injection.
+    project_registry: Option<Arc<ozzie_core::project::ProjectRegistry>>,
 }
 
 impl EventRunner {
@@ -195,6 +199,7 @@ impl EventRunner {
             provider_name: config.provider_name,
             context_window: config.context_window,
             blob_store: config.blob_store,
+            project_registry: config.project_registry,
         }
     }
 
@@ -220,6 +225,7 @@ impl EventRunner {
             provider_name: None,
             context_window: None,
             blob_store: None,
+            project_registry: None,
         }
     }
 
@@ -347,6 +353,7 @@ impl EventRunner {
             provider_name: self.provider_name.clone(),
             context_window: self.context_window,
             blob_store: self.blob_store.clone(),
+            project_registry: self.project_registry.clone(),
         })
     }
 
@@ -366,10 +373,25 @@ impl EventRunner {
         );
         let memory_sec = prompt::memory_section(memories, 0);
 
-        let dynamic_parts: Vec<&str> = [session_section.as_str(), memory_sec.as_str()]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect();
+        let project_sec = session
+            .project_id
+            .as_ref()
+            .and_then(|pid| {
+                self.project_registry
+                    .as_ref()
+                    .and_then(|reg| reg.get(pid))
+            })
+            .map(|p| prompt::project_section(&p.name, &p.description, &p.path, &p.instructions))
+            .unwrap_or_default();
+
+        let dynamic_parts: Vec<&str> = [
+            session_section.as_str(),
+            project_sec.as_str(),
+            memory_sec.as_str(),
+        ]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect();
 
         if dynamic_parts.is_empty() {
             return self.static_prompt.clone();
@@ -536,12 +558,54 @@ impl EventRunner {
         let policy_name = match pm.resolve_policy(&identity, &roles) {
             Some(p) => p,
             None => {
-                info!(
-                    platform = %identity.platform,
-                    server_id = %identity.server_id,
-                    user = %identity.user_id,
-                    "unpaired identity, ignoring connector message"
-                );
+                let is_pair = content.trim().eq_ignore_ascii_case("/pair");
+                if is_pair {
+                    let incoming = ozzie_core::connector::IncomingMessage {
+                        identity: identity.clone(),
+                        content: content.clone(),
+                        channel_id: channel_id.clone(),
+                        message_id: message_id.clone(),
+                        timestamp: chrono::Utc::now(),
+                        roles: roles.clone(),
+                        ..Default::default()
+                    };
+                    let request_id = pm.on_pair_request(&incoming);
+                    info!(
+                        request_id = %request_id,
+                        platform = %identity.platform,
+                        user = %identity.user_id,
+                        "pairing request created from connector"
+                    );
+                    self.bus.publish(Event::new(
+                        EventSource::Agent,
+                        EventPayload::ConnectorReply {
+                            connector: connector.clone(),
+                            channel_id: channel_id.clone(),
+                            content: format!(
+                                "Pairing request created (`{request_id}`). Waiting for owner approval."
+                            ),
+                            reply_to_id: if message_id.is_empty() { None } else { Some(message_id.clone()) },
+                            feedback: false,
+                        },
+                    ));
+                } else {
+                    info!(
+                        platform = %identity.platform,
+                        server_id = %identity.server_id,
+                        user = %identity.user_id,
+                        "unpaired identity, sending hint"
+                    );
+                    self.bus.publish(Event::new(
+                        EventSource::Agent,
+                        EventPayload::ConnectorReply {
+                            connector: connector.clone(),
+                            channel_id: channel_id.clone(),
+                            content: "I don't know you yet. Send `/pair` to request access.".to_string(),
+                            reply_to_id: if message_id.is_empty() { None } else { Some(message_id.clone()) },
+                            feedback: false,
+                        },
+                    ));
+                }
                 return;
             }
         };
@@ -800,7 +864,18 @@ impl EventRunner {
 
         // If we have tools, use the ReAct loop; otherwise stream directly
         if !session_tools.is_empty() {
-            self.process_with_tools(&session_id, chat_messages, &session_tools, &session_tool_defs, session.root_dir.clone(), &runtime)
+            // Resolve git_auto_commit from active project
+            let git_auto_commit = session
+                .project_id
+                .as_ref()
+                .and_then(|pid| {
+                    self.project_registry
+                        .as_ref()
+                        .and_then(|reg| reg.get(pid))
+                })
+                .is_some_and(|p| p.git_auto_commit);
+
+            self.process_with_tools(&session_id, chat_messages, &session_tools, &session_tool_defs, session.root_dir.clone(), git_auto_commit, &runtime)
                 .await;
         } else {
             self.process_without_tools(&session_id, chat_messages).await;
@@ -832,6 +907,7 @@ impl EventRunner {
     ///
     /// Delegates to `ReactLoop::run()` with an observer that bridges events
     /// to the event bus.
+    #[allow(clippy::too_many_arguments)]
     async fn process_with_tools(
         &self,
         session_id: &str,
@@ -839,6 +915,7 @@ impl EventRunner {
         tools: &[Arc<dyn Tool>],
         _tool_defs: &[ToolDefinition],
         work_dir: Option<String>,
+        git_auto_commit: bool,
         runtime: &Arc<SessionRuntime>,
     ) {
         // Acquire actor pool slot so subtasks/schedules see capacity constraints.
@@ -877,6 +954,7 @@ impl EventRunner {
             cancel_token: Some(runtime.cancel_token().clone()),
             repetition_window: 10,
             repetition_threshold: 3,
+            git_auto_commit,
         };
 
         let result = react::ReactLoop::run(&config, chat_messages).await;
@@ -1485,6 +1563,7 @@ mod tests {
             context_window: None,
             user_profile: None,
             blob_store: None,
+            project_registry: None,
         }));
         runner.start();
 

@@ -194,8 +194,9 @@ impl RequestHandler {
         let identity = serde_json::json!({
             "platform": p.connector,
             "user_id": p.author,
+            "name": p.author,
             "channel_id": p.channel_id,
-            "server_id": p.connector,
+            "server_id": p.server_id.clone().unwrap_or_default(),
         });
 
         self.bus.publish(Event::new(

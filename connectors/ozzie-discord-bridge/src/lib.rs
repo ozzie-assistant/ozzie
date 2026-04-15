@@ -55,6 +55,8 @@ struct InboundMessage {
     message_id: String,
     author: String,
     content: String,
+    /// Guild snowflake, or empty string for DMs.
+    server_id: String,
 }
 
 /// A response from the gateway to send back to Discord.
@@ -255,6 +257,7 @@ impl DiscordBridge {
                         &msg.author,
                         &msg.content,
                         Some(msg.message_id.as_str()).filter(|s| !s.is_empty()),
+                        Some(msg.server_id.as_str()),
                     ).await {
                         warn!(error = %e, "send_connector_message failed");
                         continue;
@@ -415,6 +418,10 @@ impl EventHandler for DiscordEventHandler {
             message_id: msg.id.to_string(),
             author: msg.author.name.clone(),
             content: msg.content.clone(),
+            server_id: msg
+                .guild_id
+                .map(|g| g.to_string())
+                .unwrap_or_default(),
         }) {
             warn!(error = %e, "inbound channel closed");
         }
@@ -448,6 +455,10 @@ impl EventHandler for DiscordEventHandler {
                             message_id: String::new(),
                             author: cmd.user.name.clone(),
                             content: format!("/{_command_name}"),
+                            server_id: cmd
+                                .guild_id
+                                .map(|g| g.to_string())
+                                .unwrap_or_default(),
                         }) {
                             warn!(error = %e, "inbound channel closed");
                         }

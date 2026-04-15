@@ -117,7 +117,7 @@ mod tests {
         let variants = vec![
             (Request::OpenSession(Default::default()), "open_session"),
             (Request::SendMessage(SendMessageParams { session_id: String::new(), text: String::new(), images: Vec::new() }), "send_message"),
-            (Request::SendConnectorMessage(SendConnectorMessageParams { connector: String::new(), channel_id: String::new(), author: String::new(), content: String::new(), message_id: None }), "send_connector_message"),
+            (Request::SendConnectorMessage(SendConnectorMessageParams { connector: String::new(), channel_id: String::new(), author: String::new(), content: String::new(), message_id: None, server_id: None }), "send_connector_message"),
             (Request::CancelSession(CancelSessionParams { session_id: String::new() }), "cancel_session"),
         ];
         for (req, expected) in variants {

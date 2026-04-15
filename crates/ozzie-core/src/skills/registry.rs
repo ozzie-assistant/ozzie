@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::types::SkillMD;
+use super::types::{SkillMD, SkillSource};
 
 /// Manages loaded skills by name.
 pub struct SkillRegistry {
@@ -54,6 +54,20 @@ impl SkillRegistry {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Removes a skill by name. Returns the removed skill if it existed.
+    pub fn unregister(&self, name: &str) -> Option<SkillMD> {
+        let mut skills = self.skills.write().unwrap();
+        skills.remove(name)
+    }
+
+    /// Removes all skills matching a given source. Returns the count removed.
+    pub fn unregister_by_source(&self, source: &SkillSource) -> usize {
+        let mut skills = self.skills.write().unwrap();
+        let before = skills.len();
+        skills.retain(|_, skill| &skill.source != source);
+        before - skills.len()
+    }
 }
 
 impl Default for SkillRegistry {
@@ -78,6 +92,7 @@ mod tests {
             dir: String::new(),
             workflow: None,
             triggers: None,
+            source: SkillSource::Global,
         }
     }
 
@@ -110,5 +125,37 @@ mod tests {
         let all = reg.all();
         assert_eq!(all[0].name, "alpha");
         assert_eq!(all[1].name, "zebra");
+    }
+
+    #[test]
+    fn unregister() {
+        let reg = SkillRegistry::new();
+        reg.register(make_skill("deploy"));
+
+        let removed = reg.unregister("deploy");
+        assert!(removed.is_some());
+        assert!(reg.get("deploy").is_none());
+    }
+
+    #[test]
+    fn unregister_by_source() {
+        let reg = SkillRegistry::new();
+        reg.register(make_skill("global-a"));
+
+        let mut project_skill = make_skill("project-b");
+        project_skill.source = SkillSource::Project("coaching".to_string());
+        reg.register(project_skill);
+
+        let mut project_skill2 = make_skill("project-c");
+        project_skill2.source = SkillSource::Project("coaching".to_string());
+        reg.register(project_skill2);
+
+        assert_eq!(reg.len(), 3);
+
+        let removed = reg.unregister_by_source(&SkillSource::Project("coaching".to_string()));
+        assert_eq!(removed, 2);
+        assert_eq!(reg.len(), 1);
+        assert!(reg.get("global-a").is_some());
+        assert!(reg.get("project-b").is_none());
     }
 }

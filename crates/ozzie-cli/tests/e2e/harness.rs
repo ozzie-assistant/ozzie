@@ -183,6 +183,7 @@ impl TestGateway {
             context_window: None,
             user_profile: None,
             blob_store: blob_store_for_runner,
+            project_registry: None,
         }));
         runner.start();
 

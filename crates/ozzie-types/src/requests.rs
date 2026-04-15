@@ -71,6 +71,10 @@ pub struct SendConnectorMessageParams {
     /// Optional platform-specific message ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
+    /// Platform-specific server/guild/workspace ID. Empty string (or absent)
+    /// for DMs or platforms without servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
 }
 
 /// Parameters for `cancel_session`.

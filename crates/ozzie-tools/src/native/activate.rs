@@ -274,6 +274,7 @@ mod tests {
                 steps: vec![],
             }),
             triggers: None,
+            source: Default::default(),
         });
         reg
     }

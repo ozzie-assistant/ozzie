@@ -36,6 +36,8 @@ pub struct ToolContext {
     pub subtask_depth: u32,
     /// Optional progress sender for long-running tools.
     pub progress: Option<ProgressSender>,
+    /// Auto-commit file writes in the current workspace.
+    pub git_auto_commit: bool,
 }
 
 impl std::fmt::Debug for ToolContext {
