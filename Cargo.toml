@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "connectors/*", "sages/*"]
+members = ["crates/*", "connectors/*", "worm/*"]
 
 [workspace.package]
 edition = "2024"
@@ -83,9 +83,9 @@ ozzie-gateway = { version = "0.1.0", path = "crates/ozzie-gateway" }
 ozzie-memory = { version = "0.1.0", path = "crates/ozzie-memory" }
 ozzie-utils = { version = "0.1.0", path = "crates/ozzie-utils" }
 
-# Sages (independent publishable crates)
-sage-profile = { version = "0.1.0", path = "sages/sage-profile" }
-sage-layered = { version = "0.1.0", path = "sages/sage-layered" }
+# Worm (independent publishable crates — named after Sheldon Hamilton's wormholes)
+worm-profile = { version = "0.1.0", path = "worm/worm-profile" }
+worm-layered = { version = "0.1.0", path = "worm/worm-layered" }
 
 # Connectors
 ozzie-gateway-client = { version = "0.1.0", path = "connectors/ozzie-gateway-client" }

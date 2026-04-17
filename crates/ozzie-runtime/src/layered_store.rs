@@ -147,7 +147,7 @@ impl ArchiveStore for FileArchiveStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sage_layered::Message;
+    use worm_layered::Message;
     use ozzie_core::layered::{
         Config, Indexer, Node, NodeMetadata, NodeTokenEstimate, Root, fallback_summarizer,
     };

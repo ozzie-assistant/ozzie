@@ -1979,8 +1979,6 @@ dependencies = [
  "ozzie-types",
  "rand 0.9.2",
  "regex",
- "sage-layered",
- "sage-profile",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -1989,6 +1987,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "worm-layered",
+ "worm-profile",
 ]
 
 [[package]]
@@ -2123,7 +2123,6 @@ dependencies = [
  "ozzie-memory",
  "ozzie-types",
  "ozzie-utils",
- "sage-layered",
  "serde",
  "serde_json",
  "tempfile",
@@ -2131,6 +2130,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "worm-layered",
 ]
 
 [[package]]
@@ -2913,28 +2913,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "sage-layered"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "sage-profile"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "salsa20"
@@ -4545,6 +4523,28 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "worm-layered"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "worm-profile"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

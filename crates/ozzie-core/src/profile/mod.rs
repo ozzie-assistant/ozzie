@@ -1,4 +1,4 @@
-// Re-export from sage-profile — the canonical source of truth.
-pub use sage_profile::{
+// Re-export from worm-profile — the canonical source of truth.
+pub use worm_profile::{
     load, save, ProfileSynthesizer, UserProfile, WhoamiEntry, WhoamiSource, PROFILE_FILE,
 };
