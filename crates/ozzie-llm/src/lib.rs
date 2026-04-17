@@ -1,16 +1,22 @@
 mod auth;
+mod content;
+mod driver;
 mod errors;
 mod fallback;
 pub(crate) mod helpers;
 pub mod providers;
 mod resilience;
 pub mod schema;
+mod secrets;
 pub mod toolshim;
 
 pub use auth::*;
+pub use content::{parts_to_text, text_to_parts, Content};
+pub use driver::Driver;
 pub use errors::*;
 pub use fallback::FallbackProvider;
 pub use resilience::*;
+pub use secrets::{EnvSecretResolver, SecretResolver};
 
 use std::pin::Pin;
 
@@ -42,8 +48,8 @@ impl std::fmt::Display for ChatRole {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatRole,
-    /// Content parts (text, images, etc.).
-    pub content: Vec<ozzie_types::ContentPart>,
+    /// Content parts (text, images).
+    pub content: Vec<Content>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,7 +61,7 @@ impl ChatMessage {
     pub fn text(role: ChatRole, text: impl Into<String>) -> Self {
         Self {
             role,
-            content: ozzie_types::text_to_parts(text),
+            content: text_to_parts(text),
             tool_calls: Vec::new(),
             tool_call_id: None,
         }
@@ -63,7 +69,7 @@ impl ChatMessage {
 
     /// Returns the concatenated text content (ignoring non-text parts).
     pub fn text_content(&self) -> String {
-        ozzie_types::parts_to_text(&self.content)
+        parts_to_text(&self.content)
     }
 }
 

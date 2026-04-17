@@ -79,16 +79,14 @@ impl GeminiProvider {
                 ChatRole::Tool | ChatRole::User | ChatRole::System => "user",
             };
 
-            let mut parts: Vec<GeminiPart> = msg.content.iter().filter_map(|p| match p {
-                ozzie_types::ContentPart::Text { text } => Some(GeminiPart::Text { text: text.clone() }),
-                ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(GeminiPart::InlineData {
+            let mut parts: Vec<GeminiPart> = msg.content.iter().map(|p| match p {
+                crate::Content::Text { text } => GeminiPart::Text { text: text.clone() },
+                crate::Content::Image { media_type, data, .. } => GeminiPart::InlineData {
                     inline_data: GeminiInlineData {
                         mime_type: media_type.clone(),
                         data: data.clone(),
                     },
-                }),
-                // Unresolved blobs skipped.
-                ozzie_types::ContentPart::Image { .. } => None,
+                },
             }).collect();
 
             for tc in &msg.tool_calls {

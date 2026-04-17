@@ -330,18 +330,16 @@ fn process_stream_event(event: StreamEvent, current_tool_id: &str, model: &str) 
 ///
 /// Images are sent as base64 `source` blocks — the caller must have loaded
 /// the blob bytes before calling this (see `BlobStore`).
-fn content_parts_to_blocks(parts: &[ozzie_types::ContentPart]) -> Vec<ContentBlock> {
-    parts.iter().filter_map(|p| match p {
-        ozzie_types::ContentPart::Text { text } => Some(ContentBlock::Text { text: text.clone() }),
-        ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(ContentBlock::Image {
+fn content_parts_to_blocks(parts: &[crate::Content]) -> Vec<ContentBlock> {
+    parts.iter().map(|p| match p {
+        crate::Content::Text { text } => ContentBlock::Text { text: text.clone() },
+        crate::Content::Image { media_type, data, .. } => ContentBlock::Image {
             source: ImageSource {
                 source_type: "base64".to_string(),
                 media_type: media_type.clone(),
                 data: data.clone(),
             },
-        }),
-        // Unresolved Image blobs are skipped — call resolve_blobs() first.
-        ozzie_types::ContentPart::Image { .. } => None,
+        },
     }).collect()
 }
 

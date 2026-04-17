@@ -193,50 +193,20 @@ fn media_type_to_ext(media_type: &str) -> &'static str {
     }
 }
 
-/// Resolves all `ContentPart::Image` blob references to `ContentPart::ImageInline`
-/// with base64-encoded data. Text parts pass through unchanged.
-pub async fn resolve_blobs(
-    messages: &[ozzie_llm::ChatMessage],
+/// Resolves a single `BlobRef` to an `ozzie_llm::Content::Image` with base64 data.
+pub async fn resolve_blob_to_content(
+    blob: &BlobRef,
     store: &dyn BlobStore,
-) -> Result<Vec<ozzie_llm::ChatMessage>, BlobError> {
+) -> Result<ozzie_llm::Content, BlobError> {
     use base64::Engine;
     let encoder = base64::engine::general_purpose::STANDARD;
-
-    let mut resolved = Vec::with_capacity(messages.len());
-
-    for msg in messages {
-        let has_blobs = msg.content.iter().any(|p| matches!(p, ozzie_types::ContentPart::Image { .. }));
-
-        if !has_blobs {
-            resolved.push(msg.clone());
-            continue;
-        }
-
-        let mut parts = Vec::with_capacity(msg.content.len());
-        for part in &msg.content {
-            match part {
-                ozzie_types::ContentPart::Image { blob, alt } => {
-                    let bytes = store.read(blob).await?;
-                    let base64_data = encoder.encode(&bytes);
-                    parts.push(ozzie_types::ContentPart::ImageInline {
-                        media_type: blob.media_type.clone(),
-                        data: base64_data,
-                        alt: alt.clone(),
-                    });
-                }
-                other => parts.push(other.clone()),
-            }
-        }
-
-        resolved.push(ozzie_llm::ChatMessage {
-            role: msg.role,
-            content: parts,
-            tool_calls: msg.tool_calls.clone(),
-            tool_call_id: msg.tool_call_id.clone(),
-        });
-    }
-
-    Ok(resolved)
+    let bytes = store.read(blob).await?;
+    let base64_data = encoder.encode(&bytes);
+    Ok(ozzie_llm::Content::Image {
+        media_type: blob.media_type.clone(),
+        data: base64_data,
+        alt: None,
+    })
 }
 
 #[cfg(test)]
@@ -308,45 +278,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_blobs_with_images() {
+    async fn resolve_blob_to_content_produces_image() {
         let dir = tempfile::tempdir().unwrap();
         let store = FsBlobStore::new(dir.path());
 
         let data = b"fake png bytes";
         let blob = store.write(data, "image/png").await.unwrap();
 
-        let messages = vec![ozzie_llm::ChatMessage {
-            role: ozzie_llm::ChatRole::User,
-            content: vec![
-                ozzie_types::ContentPart::text("Look at this image:"),
-                ozzie_types::ContentPart::image(blob),
-            ],
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        }];
-
-        let resolved = resolve_blobs(&messages, &store).await.unwrap();
-        assert_eq!(resolved.len(), 1);
-        assert_eq!(resolved[0].content.len(), 2);
-
-        match &resolved[0].content[1] {
-            ozzie_types::ContentPart::ImageInline { media_type, data, .. } => {
+        let content = resolve_blob_to_content(&blob, &store).await.unwrap();
+        match &content {
+            ozzie_llm::Content::Image { media_type, data, .. } => {
                 assert_eq!(media_type, "image/png");
                 assert!(!data.is_empty());
             }
-            other => panic!("expected ImageInline, got {other:?}"),
+            other => panic!("expected Image, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn resolve_blobs_text_only_passthrough() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = FsBlobStore::new(dir.path());
-
-        let messages = vec![ozzie_llm::ChatMessage::text(ozzie_llm::ChatRole::User, "hello")];
-        let resolved = resolve_blobs(&messages, &store).await.unwrap();
-
-        assert_eq!(resolved.len(), 1);
-        assert_eq!(resolved[0].text_content(), "hello");
     }
 }

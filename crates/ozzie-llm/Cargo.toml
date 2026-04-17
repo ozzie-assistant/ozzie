@@ -7,9 +7,6 @@ repository.workspace = true
 description = "Ozzie Agent OS — LLM providers (Anthropic, Ollama, OpenAI, Gemini, Mistral)"
 
 [dependencies]
-ozzie-core = { workspace = true }
-ozzie-types = { workspace = true }
-ozzie-utils = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }

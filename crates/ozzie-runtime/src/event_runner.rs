@@ -844,18 +844,16 @@ impl EventRunner {
             chat_messages.push(ChatMessage::text(role, &msg.content));
         }
 
-        // Append image content parts to the last user message if present
-        if !images.is_empty() && let Some(last_user) = chat_messages.iter_mut().rev().find(|m| m.role == ozzie_llm::ChatRole::User) {
+        // Resolve image blobs to inline base64 and append to last user message
+        if !images.is_empty()
+            && let Some(ref store) = self.blob_store
+            && let Some(last_user) = chat_messages.iter_mut().rev().find(|m| m.role == ozzie_llm::ChatRole::User)
+        {
             for blob in &images {
-                last_user.content.push(ozzie_types::ContentPart::image(blob.clone()));
-            }
-        }
-
-        // Resolve blob references to inline base64 for LLM consumption
-        if let Some(ref store) = self.blob_store {
-            match crate::blob_store::resolve_blobs(&chat_messages, store.as_ref()).await {
-                Ok(resolved) => chat_messages = resolved,
-                Err(e) => warn!(error = %e, "failed to resolve image blobs, continuing without images"),
+                match crate::blob_store::resolve_blob_to_content(blob, store.as_ref()).await {
+                    Ok(content) => last_user.content.push(content),
+                    Err(e) => warn!(error = %e, "failed to resolve image blob, skipping"),
+                }
             }
         }
 

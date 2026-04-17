@@ -1,5 +1,5 @@
-use ozzie_core::config::Driver;
-use ozzie_utils::secrets::SecretStore;
+use crate::driver::Driver;
+use crate::secrets::SecretResolver;
 use tracing::warn;
 
 /// Distinguishes between API key and Bearer token auth.
@@ -20,18 +20,17 @@ pub struct ResolvedAuth {
 ///
 /// Resolution order: direct token -> direct api_key -> driver default secret/env.
 ///
-/// Values may use `${VAR_NAME}` syntax, resolved via SecretStore first, then env.
+/// Values may use `${VAR_NAME}` syntax, resolved via the `SecretResolver`.
 /// Logs a warning if the API key prefix doesn't match the expected driver.
 pub fn resolve_auth(
     driver: Driver,
     api_key: Option<&str>,
     token: Option<&str>,
+    resolver: &dyn SecretResolver,
 ) -> Result<ResolvedAuth, AuthError> {
-    let store = SecretStore::global();
-
     // Direct Bearer token (OAuth)
     if let Some(t) = token {
-        let t = store.resolve_value(t);
+        let t = resolver.resolve_value(t);
         if !t.is_empty() {
             return Ok(ResolvedAuth {
                 kind: AuthKind::BearerToken,
@@ -42,7 +41,7 @@ pub fn resolve_auth(
 
     // Direct API key
     if let Some(k) = api_key {
-        let k = store.resolve_value(k);
+        let k = resolver.resolve_value(k);
         if !k.is_empty() {
             warn_on_key_mismatch(driver, &k);
             return Ok(ResolvedAuth {
@@ -60,7 +59,7 @@ pub fn resolve_auth(
         });
     }
 
-    let auth = secret_or_env_auth(store, driver.env_var())?;
+    let auth = secret_or_env_auth(resolver, driver.env_var())?;
 
     if !auth.value.is_empty() {
         warn_on_key_mismatch(driver, &auth.value);
@@ -102,13 +101,12 @@ fn warn_on_key_mismatch(driver: Driver, key: &str) {
     }
 }
 
-/// Looks up a credential by name: SecretStore first, then env.
+/// Looks up a credential by name: SecretResolver first, then env.
 fn secret_or_env_auth(
-    store: &SecretStore,
+    resolver: &dyn SecretResolver,
     var_name: &str,
 ) -> Result<ResolvedAuth, AuthError> {
-    // SecretStore (decrypted secrets from .env, never in process env)
-    if let Some(v) = store.get(var_name)
+    if let Some(v) = resolver.get(var_name)
         && !v.is_empty()
     {
         return Ok(ResolvedAuth {
@@ -137,59 +135,48 @@ pub enum AuthError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::secrets::EnvSecretResolver;
+
+    fn resolver() -> EnvSecretResolver {
+        EnvSecretResolver
+    }
 
     #[test]
     fn direct_token_takes_priority() {
-        let auth = resolve_auth(Driver::Anthropic, Some("key123"), Some("token456")).unwrap();
+        let auth =
+            resolve_auth(Driver::Anthropic, Some("key123"), Some("token456"), &resolver()).unwrap();
         assert_eq!(auth.kind, AuthKind::BearerToken);
         assert_eq!(auth.value, "token456");
     }
 
     #[test]
     fn direct_api_key() {
-        let auth = resolve_auth(Driver::Anthropic, Some("key123"), None).unwrap();
+        let auth = resolve_auth(Driver::Anthropic, Some("key123"), None, &resolver()).unwrap();
         assert_eq!(auth.kind, AuthKind::ApiKey);
         assert_eq!(auth.value, "key123");
     }
 
     #[test]
     fn ollama_no_auth_needed() {
-        let auth = resolve_auth(Driver::Ollama, None, None).unwrap();
+        let auth = resolve_auth(Driver::Ollama, None, None, &resolver()).unwrap();
         assert!(auth.value.is_empty());
     }
 
     #[test]
-    fn resolves_from_secret_store() {
-        let store = SecretStore::global();
-        store.set("OZZIE_TEST_SECRET_KEY", "from_store");
-        let auth =
-            resolve_auth(Driver::Anthropic, Some("${OZZIE_TEST_SECRET_KEY}"), None).unwrap();
-        assert_eq!(auth.value, "from_store");
-    }
-
-    #[test]
-    fn driver_fallback_from_secret_store() {
-        let store = SecretStore::global();
-        store.set("ANTHROPIC_API_KEY", "sk-ant-from-store");
-        let auth = resolve_auth(Driver::Anthropic, None, None).unwrap();
-        assert_eq!(auth.value, "sk-ant-from-store");
-    }
-
-    #[test]
     fn openai_compatible_no_auth_needed() {
-        let auth = resolve_auth(Driver::OpenAiCompatible, None, None).unwrap();
+        let auth = resolve_auth(Driver::OpenAiCompatible, None, None, &resolver()).unwrap();
         assert!(auth.value.is_empty());
     }
 
     #[test]
     fn lm_studio_no_auth_needed() {
-        let auth = resolve_auth(Driver::LmStudio, None, None).unwrap();
+        let auth = resolve_auth(Driver::LmStudio, None, None, &resolver()).unwrap();
         assert!(auth.value.is_empty());
     }
 
     #[test]
     fn vllm_no_auth_needed() {
-        let auth = resolve_auth(Driver::Vllm, None, None).unwrap();
+        let auth = resolve_auth(Driver::Vllm, None, None, &resolver()).unwrap();
         assert!(auth.value.is_empty());
     }
 

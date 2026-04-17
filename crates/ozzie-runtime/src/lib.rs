@@ -25,7 +25,7 @@ pub mod storage;
 pub mod toolset;
 
 pub use approval::EventBusApprovalRequester;
-pub use blob_store::{FsBlobStore, resolve_blobs};
+pub use blob_store::{FsBlobStore, resolve_blob_to_content};
 pub use dream::DreamRunner;
 pub use connector::{ProcessInfo, ProcessSupervisor};
 pub use json_device_store::JsonDeviceStore;

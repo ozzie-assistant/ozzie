@@ -1,6 +1,20 @@
 use std::sync::Arc;
 
 use ozzie_core::config::{self, Driver};
+use ozzie_utils::secrets::SecretStore;
+
+/// Adapter: implements `ozzie_llm::SecretResolver` for Ozzie's `SecretStore`.
+pub struct OzzieSecretResolver;
+
+impl ozzie_llm::SecretResolver for OzzieSecretResolver {
+    fn get(&self, key: &str) -> Option<String> {
+        SecretStore::global().get(key)
+    }
+
+    fn resolve_value(&self, value: &str) -> String {
+        SecretStore::global().resolve_value(value)
+    }
+}
 
 /// Builds an LLM provider from a named provider configuration entry.
 ///
@@ -9,12 +23,14 @@ use ozzie_core::config::{self, Driver};
 pub fn build_provider(
     name: &str,
     provider_cfg: &config::ProviderConfig,
+    secret_resolver: &dyn ozzie_llm::SecretResolver,
 ) -> anyhow::Result<Arc<dyn ozzie_llm::Provider>> {
     let driver = provider_cfg.driver;
     let auth = ozzie_llm::resolve_auth(
         driver,
         provider_cfg.auth.api_key.as_deref(),
         provider_cfg.auth.token.as_deref(),
+        secret_resolver,
     )
     .map_err(|e| anyhow::anyhow!("auth resolution for '{name}' failed: {e}"))?;
 

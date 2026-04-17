@@ -30,7 +30,7 @@ pub async fn run(ozzie_path: &Path, language: Option<&str>) -> anyhow::Result<()
         .get(default_name)
         .ok_or_else(|| anyhow::anyhow!("default provider '{default_name}' not found in config"))?;
 
-    let provider = crate::provider_factory::build_provider(default_name, provider_cfg)?;
+    let provider = crate::provider_factory::build_provider(default_name, provider_cfg, &crate::provider_factory::OzzieSecretResolver)?;
 
     // Load persona
     let persona = load_persona(ozzie_path);

@@ -80,7 +80,7 @@ impl OllamaProvider {
                 }
 
                 let images: Vec<String> = m.content.iter().filter_map(|p| match p {
-                    ozzie_types::ContentPart::ImageInline { data, .. } => Some(data.clone()),
+                    crate::Content::Image { data, .. } => Some(data.clone()),
                     _ => None,
                 }).collect();
                 OllamaMessage {

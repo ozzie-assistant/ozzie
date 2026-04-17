@@ -464,7 +464,7 @@ impl ReactLoop {
             // Process tool calls
             chat_messages.push(ChatMessage {
                 role: ChatRole::Assistant,
-                content: ozzie_types::text_to_parts(&response.content),
+                content: ozzie_llm::text_to_parts(&response.content),
                 tool_calls: response.tool_calls.clone(),
                 tool_call_id: None,
             });
@@ -513,7 +513,7 @@ impl ReactLoop {
 
                 chat_messages.push(ChatMessage {
                     role: ChatRole::Tool,
-                    content: ozzie_types::text_to_parts(result),
+                    content: ozzie_llm::text_to_parts(result),
                     tool_calls: Vec::new(),
                     tool_call_id: Some(tc.id.clone()),
                 });

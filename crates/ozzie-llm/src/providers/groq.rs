@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn auth_resolution_groq_driver() {
-        let auth = crate::resolve_auth(ozzie_core::config::Driver::Groq, Some("gsk_test"), None).unwrap();
+        let auth = crate::resolve_auth(crate::Driver::Groq, Some("gsk_test"), None, &crate::EnvSecretResolver).unwrap();
         assert_eq!(auth.kind, AuthKind::ApiKey);
         assert_eq!(auth.value, "gsk_test");
     }

@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn auth_resolution_mistral_driver() {
-        let auth = crate::resolve_auth(ozzie_core::config::Driver::Mistral, Some("my-key"), None).unwrap();
+        let auth = crate::resolve_auth(crate::Driver::Mistral, Some("my-key"), None, &crate::EnvSecretResolver).unwrap();
         assert_eq!(auth.kind, AuthKind::ApiKey);
         assert_eq!(auth.value, "my-key");
     }

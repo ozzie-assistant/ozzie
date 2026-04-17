@@ -553,7 +553,7 @@ async fn test_tool_result_roundtrip(provider: &dyn Provider, label: &str) -> Res
         },
         ChatMessage {
             role: ChatRole::Tool,
-            content: ozzie_types::text_to_parts(r#"{"temperature": 18, "condition": "cloudy"}"#),
+            content: ozzie_llm::text_to_parts(r#"{"temperature": 18, "condition": "cloudy"}"#),
             tool_calls: vec![],
             tool_call_id: Some(tc.id.clone()),
         },

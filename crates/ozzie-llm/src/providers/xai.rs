@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn auth_resolution_xai_driver() {
-        let auth = crate::resolve_auth(ozzie_core::config::Driver::Xai, Some("xai-test"), None).unwrap();
+        let auth = crate::resolve_auth(crate::Driver::Xai, Some("xai-test"), None, &crate::EnvSecretResolver).unwrap();
         assert_eq!(auth.kind, AuthKind::ApiKey);
         assert_eq!(auth.value, "xai-test");
     }

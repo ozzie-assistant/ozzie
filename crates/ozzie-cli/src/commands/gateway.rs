@@ -633,7 +633,7 @@ fn build_provider(
     name: &str,
     provider_cfg: &config::ProviderConfig,
 ) -> anyhow::Result<Arc<dyn ozzie_llm::Provider>> {
-    crate::provider_factory::build_provider(name, provider_cfg)
+    crate::provider_factory::build_provider(name, provider_cfg, &crate::provider_factory::OzzieSecretResolver)
 }
 
 fn create_providers(cfg: &config::Config) -> anyhow::Result<(ProviderRegistry, ActorPool)> {

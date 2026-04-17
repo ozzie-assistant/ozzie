@@ -398,24 +398,22 @@ impl Provider for OpenAIProvider {
 /// Converts domain content parts to OpenAI `content` field.
 ///
 /// Text-only → plain string. Mixed → array of content objects.
-fn content_parts_to_openai(parts: &[ozzie_types::ContentPart]) -> serde_json::Value {
+fn content_parts_to_openai(parts: &[crate::Content]) -> serde_json::Value {
     let has_images = parts.iter().any(|p| p.is_image());
     if !has_images {
-        return serde_json::Value::String(ozzie_types::parts_to_text(parts));
+        return serde_json::Value::String(crate::parts_to_text(parts));
     }
-    let blocks: Vec<serde_json::Value> = parts.iter().filter_map(|p| match p {
-        ozzie_types::ContentPart::Text { text } => Some(serde_json::json!({
+    let blocks: Vec<serde_json::Value> = parts.iter().map(|p| match p {
+        crate::Content::Text { text } => serde_json::json!({
             "type": "text",
             "text": text,
-        })),
-        ozzie_types::ContentPart::ImageInline { media_type, data, .. } => Some(serde_json::json!({
+        }),
+        crate::Content::Image { media_type, data, .. } => serde_json::json!({
             "type": "image_url",
             "image_url": {
                 "url": format!("data:{media_type};base64,{data}"),
             },
-        })),
-        // Unresolved blobs skipped.
-        ozzie_types::ContentPart::Image { .. } => None,
+        }),
     }).collect();
     serde_json::Value::Array(blocks)
 }
