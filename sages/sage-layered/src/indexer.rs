@@ -3,13 +3,13 @@ use std::fmt::Write;
 
 use chrono::Utc;
 
-use crate::domain::Message;
-use crate::layered::keywords::extract_keywords;
-use crate::layered::store::ArchiveStore;
-use crate::layered::types::{
+use crate::message::Message;
+use crate::keywords::extract_keywords;
+use crate::store::ArchiveStore;
+use crate::types::{
     ArchivePayload, Config, Index, Node, NodeMetadata, NodeTokenEstimate, Root,
 };
-use crate::layered::{estimate_tokens, trim_to_tokens};
+use crate::{estimate_tokens, trim_to_tokens};
 
 /// Function signature for summarization: (text, target_tokens) → summary.
 /// This is the heuristic fallback; LLM-based summarizers can also implement this.
@@ -254,7 +254,7 @@ fn split_sentences(text: &str) -> Vec<String> {
 #[derive(Debug, thiserror::Error)]
 pub enum IndexerError {
     #[error("store: {0}")]
-    Store(#[from] crate::layered::store::StoreError),
+    Store(#[from] crate::store::StoreError),
 }
 
 #[cfg(test)]

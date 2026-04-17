@@ -1,10 +1,10 @@
 use std::fmt::Write;
 
-use crate::domain::{Message, ROLE_ASSISTANT, ROLE_USER};
-use crate::layered::indexer::{Indexer, SummarizerFn};
-use crate::layered::retriever::Retriever;
-use crate::layered::store::ArchiveStore;
-use crate::layered::types::{ApplyResult, Config, RetrievalResult, Selection};
+use crate::message::{Message, ROLE_ASSISTANT, ROLE_USER};
+use crate::indexer::{Indexer, SummarizerFn};
+use crate::retriever::Retriever;
+use crate::store::ArchiveStore;
+use crate::types::{ApplyResult, Config, RetrievalResult, Selection};
 
 /// Orchestrates the full layered context pipeline:
 /// indexer → retriever → compressed message list.
@@ -144,7 +144,7 @@ impl std::fmt::Display for Selection {
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerError {
     #[error("indexer: {0}")]
-    Indexer(#[from] crate::layered::indexer::IndexerError),
+    Indexer(#[from] crate::indexer::IndexerError),
 }
 
 #[cfg(test)]
@@ -159,7 +159,7 @@ mod tests {
         let result = RetrievalResult {
             selections: vec![Selection {
                 node_id: "abc123".to_string(),
-                layer: crate::layered::types::Layer::L0,
+                layer: crate::types::Layer::L0,
                 content: "test abstract content".to_string(),
                 tokens: 10,
                 score: 0.85,

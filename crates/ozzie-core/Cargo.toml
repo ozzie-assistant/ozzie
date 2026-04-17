@@ -10,6 +10,7 @@ description = "Ozzie Agent OS — pure domain layer"
 ozzie-types = { workspace = true }
 ozzie-llm = { workspace = true }
 sage-profile = { workspace = true }
+sage-layered = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }

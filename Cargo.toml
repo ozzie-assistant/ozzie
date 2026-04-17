@@ -85,6 +85,7 @@ ozzie-utils = { version = "0.1.0", path = "crates/ozzie-utils" }
 
 # Sages (independent publishable crates)
 sage-profile = { version = "0.1.0", path = "sages/sage-profile" }
+sage-layered = { version = "0.1.0", path = "sages/sage-layered" }
 
 # Connectors
 ozzie-gateway-client = { version = "0.1.0", path = "connectors/ozzie-gateway-client" }

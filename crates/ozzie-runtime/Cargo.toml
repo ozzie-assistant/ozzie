@@ -8,6 +8,7 @@ description = "Ozzie Agent OS — ReAct loop, task runner, sessions"
 
 [dependencies]
 ozzie-core = { workspace = true }
+sage-layered = { workspace = true }
 ozzie-types = { workspace = true }
 ozzie-utils = { workspace = true }
 ozzie-llm = { path = "../ozzie-llm" }

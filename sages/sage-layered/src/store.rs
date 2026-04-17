@@ -1,4 +1,4 @@
-use crate::layered::types::{ArchivePayload, Index};
+use crate::types::{ArchivePayload, Index};
 
 /// Errors from archive store operations.
 #[derive(Debug, thiserror::Error)]

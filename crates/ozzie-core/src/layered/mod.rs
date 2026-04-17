@@ -1,19 +1,22 @@
-mod bm25;
-pub mod indexer;
-pub mod keywords;
-pub mod manager;
-pub mod retriever;
-pub mod store;
-mod types;
-mod utils;
-
-pub use bm25::BM25;
-pub use indexer::{fallback_summarizer, Indexer, SummarizerFn};
-pub use keywords::extract_keywords;
-pub use manager::Manager;
-pub use store::{ArchiveStore, StoreError};
-pub use types::{
-    ApplyResult, ArchivePayload, Config, Index, Layer, Node, NodeMetadata, NodeTokenEstimate,
-    RetrievalDecision, RetrievalResult, Root, Selection, TokenUsage,
+// Re-export from sage-layered — the canonical source of truth.
+pub use sage_layered::{
+    extract_keywords, chunk_messages, estimate_tokens, fallback_summarizer, trim_to_tokens,
+    ApplyResult, ArchivePayload, ArchiveStore, BM25, Config, Index, Indexer, Layer,
+    Manager, Node, NodeMetadata, NodeTokenEstimate, RetrievalDecision, RetrievalResult,
+    Root, Selection, StoreError, SummarizerFn, TokenUsage,
 };
-pub use utils::{chunk_messages, estimate_tokens, trim_to_tokens};
+
+// Re-export submodules for consumers using `layered::store::*` and `layered::retriever::*` paths.
+pub use sage_layered::{store, retriever};
+
+/// Convert domain messages to layered messages.
+pub fn to_layered_messages(messages: &[crate::domain::Message]) -> Vec<sage_layered::Message> {
+    messages
+        .iter()
+        .map(|m| sage_layered::Message {
+            role: m.role.clone(),
+            content: m.content.clone(),
+            ts: m.ts,
+        })
+        .collect()
+}

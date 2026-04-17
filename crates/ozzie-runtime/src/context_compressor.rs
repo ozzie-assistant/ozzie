@@ -41,10 +41,17 @@ impl ContextCompressor for LayeredContextCompressor {
         session_id: &str,
         history: &[Message],
     ) -> Result<Vec<Message>, CompressionError> {
-        self.manager
-            .apply(session_id, history)
-            .map(|(msgs, _stats)| msgs)
-            .map_err(|e| CompressionError::Other(e.to_string()))
+        let layered_msgs = ozzie_core::layered::to_layered_messages(history);
+        let (result_msgs, _stats) = self
+            .manager
+            .apply(session_id, &layered_msgs)
+            .map_err(|e| CompressionError::Other(e.to_string()))?;
+
+        // Convert back to domain messages
+        Ok(result_msgs
+            .into_iter()
+            .map(|m| Message::new(m.role, m.content))
+            .collect())
     }
 }
 

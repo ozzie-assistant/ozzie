@@ -1,0 +1,17 @@
+[package]
+name = "sage-layered"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Layered context compression for LLM agents — BM25 scoring, L0/L1/L2 progressive retrieval"
+keywords = ["ai-agent", "context-compression", "bm25", "retrieval"]
+categories = ["algorithms", "data-structures"]
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

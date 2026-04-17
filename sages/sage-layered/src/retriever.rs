@@ -1,7 +1,7 @@
-use crate::layered::bm25::BM25;
-use crate::layered::estimate_tokens;
-use crate::layered::store::ArchiveStore;
-use crate::layered::types::{
+use crate::bm25::BM25;
+use crate::estimate_tokens;
+use crate::store::ArchiveStore;
+use crate::types::{
     Config, Index, Layer, RetrievalDecision, RetrievalResult, Selection, TokenUsage,
 };
 
@@ -222,7 +222,7 @@ impl<'a> Retriever<'a> {
     fn select_with_budget(
         &self,
         scored: &[ScoredNode],
-        nodes: &[crate::layered::types::Node],
+        nodes: &[crate::types::Node],
         budget: usize,
         layer: Layer,
         max_items: usize,
