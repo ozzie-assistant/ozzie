@@ -1,9 +1,21 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
+/// Provenance of a whoami entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WhoamiSource {
+    /// Provided during onboarding — protected from consolidation.
+    Intro,
+    /// Extracted from conversation by the agent.
+    Conversation,
+    /// Produced by LLM consolidation of multiple entries.
+    Consolidated,
+}
+
 /// User profile — identity-level knowledge about the user.
 ///
-/// Loaded into the system prompt on every interaction.
+/// Designed to be loaded into an LLM system prompt on every interaction.
 /// Must stay compact (a few hundred tokens max).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserProfile {
@@ -15,9 +27,9 @@ pub struct UserProfile {
     /// Preferred language (e.g. "fr", "en").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
-    /// Ozzie's knowledge about the user — identity-level facts only.
+    /// Agent's knowledge about the user — identity-level facts only.
     ///
-    /// Entries with `source: "intro"` are protected from compression.
+    /// Entries with [`WhoamiSource::Intro`] are protected from consolidation.
     /// Other entries may be consolidated by an LLM when the list grows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub whoami: Vec<WhoamiEntry>,
@@ -27,15 +39,15 @@ pub struct UserProfile {
     pub updated_at: NaiveDate,
 }
 
-/// A single piece of knowledge Ozzie holds about the user.
+/// A single piece of knowledge the agent holds about the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WhoamiEntry {
     /// The information itself — a concise statement.
     pub info: String,
     /// When this entry was created.
     pub created_at: NaiveDate,
-    /// Provenance: "intro" (protected), "conversation", "consolidated".
-    pub source: String,
+    /// Provenance of this entry.
+    pub source: WhoamiSource,
 }
 
 impl UserProfile {
@@ -47,7 +59,7 @@ impl UserProfile {
             .map(|info| WhoamiEntry {
                 info,
                 created_at: today,
-                source: "intro".to_string(),
+                source: WhoamiSource::Intro,
             })
             .collect();
 
@@ -72,21 +84,24 @@ impl UserProfile {
         self.whoami.push(WhoamiEntry {
             info,
             created_at: today,
-            source: "conversation".to_string(),
+            source: WhoamiSource::Conversation,
         });
         self.updated_at = today;
     }
 
-    /// Returns all intro entries (protected from compression).
+    /// Returns all intro entries (protected from consolidation).
     pub fn intro_entries(&self) -> Vec<&WhoamiEntry> {
-        self.whoami.iter().filter(|e| e.source == "intro").collect()
+        self.whoami
+            .iter()
+            .filter(|e| e.source == WhoamiSource::Intro)
+            .collect()
     }
 
-    /// Returns all non-intro entries (eligible for compression).
+    /// Returns all non-intro entries (eligible for consolidation).
     pub fn compressible_entries(&self) -> Vec<&WhoamiEntry> {
         self.whoami
             .iter()
-            .filter(|e| e.source != "intro")
+            .filter(|e| e.source != WhoamiSource::Intro)
             .collect()
     }
 }
@@ -100,25 +115,49 @@ mod tests {
     }
 
     #[test]
+    fn new_profile_has_intro_entry() {
+        let p = test_profile();
+        assert_eq!(p.whoami.len(), 1);
+        assert_eq!(p.whoami[0].source, WhoamiSource::Intro);
+    }
+
+    #[test]
     fn add_observation_deduplicates() {
-        let mut profile = test_profile();
-        profile.add_observation("likes Rust".into());
-        profile.add_observation("likes Rust".into());
-        assert_eq!(profile.whoami.len(), 2); // intro + 1 observation
+        let mut p = test_profile();
+        p.add_observation("likes Rust".into());
+        p.add_observation("likes Rust".into());
+        assert_eq!(p.whoami.len(), 2);
     }
 
     #[test]
     fn add_observation_skips_existing_intro() {
-        let mut profile = test_profile();
-        profile.add_observation("intro fact".into());
-        assert_eq!(profile.whoami.len(), 1); // only the intro
+        let mut p = test_profile();
+        p.add_observation("intro fact".into());
+        assert_eq!(p.whoami.len(), 1);
     }
 
     #[test]
     fn add_observation_allows_different_entries() {
-        let mut profile = test_profile();
-        profile.add_observation("fact A".into());
-        profile.add_observation("fact B".into());
-        assert_eq!(profile.whoami.len(), 3); // intro + A + B
+        let mut p = test_profile();
+        p.add_observation("fact A".into());
+        p.add_observation("fact B".into());
+        assert_eq!(p.whoami.len(), 3);
+    }
+
+    #[test]
+    fn intro_entries_returns_only_intro() {
+        let mut p = test_profile();
+        p.add_observation("from conversation".into());
+        assert_eq!(p.intro_entries().len(), 1);
+        assert_eq!(p.compressible_entries().len(), 1);
+    }
+
+    #[test]
+    fn serde_roundtrip() {
+        let p = test_profile();
+        let json = serde_json::to_string(&p).expect("serialize");
+        let p2: UserProfile = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(p2.name, "Test");
+        assert_eq!(p2.whoami.len(), 1);
     }
 }

@@ -1,27 +1,26 @@
 mod types;
 
-pub use types::{
-    ChannelConfig, ChannelKind, DiscordConnectorConfig, DiscordDatabase, DiscordGuildConfig,
-    RespondMode,
-};
+pub use types::DiscordConnectorConfig;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ozzie_client::{EventKind, OzzieClient, OpenSessionOpts, PromptResponseParams};
+use ozzie_gateway_client::{
+    ConnectorMessageParams, GatewayClient, GatewayError, Notification, OpenSessionOpts,
+    PromptResponseParams, WsGatewayClient,
+};
 use serenity::all::{
-    ChannelId, Command, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    ComponentInteraction, Context, CreateCommand, CreateCommandOption,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditRole,
-    EventHandler, GatewayIntents, Guild, GuildId, Interaction, Message, MessageId,
-    Ready, RoleId, UserId,
+    ChannelId, Command, Context, CreateCommand, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, EventHandler, GatewayIntents, Interaction,
+    Message, MessageId, Ready,
 };
 use serenity::Client;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{mpsc, Notify};
 use tracing::{debug, info, warn};
 
-// Re-export for CLI use
-pub use ozzie_types::Reaction;
+const CONNECTOR_NAME: &str = "discord";
+const DEFAULT_GATEWAY_URL: &str = "ws://127.0.0.1:18420/ws";
+const RESPONSE_TIMEOUT_SECS: u64 = 300;
 
 /// Basic bot identity returned by [`verify_token`].
 pub struct BotInfo {
@@ -48,18 +47,16 @@ pub async fn verify_token(token: &str) -> Result<BotInfo, String> {
     })
 }
 
-/// A Discord message routed to the gateway.
+// ---- Internal message types ----
+
 #[derive(Debug)]
 struct InboundMessage {
     channel_id: String,
     message_id: String,
-    author: String,
+    author_id: String,
     content: String,
-    /// Guild snowflake, or empty string for DMs.
-    server_id: String,
 }
 
-/// A response from the gateway to send back to Discord.
 #[derive(Debug)]
 struct OutboundMessage {
     channel_id: String,
@@ -67,110 +64,73 @@ struct OutboundMessage {
     reply_to_id: Option<String>,
 }
 
-/// Discord connector bridge — serenity bot + JSON-RPC gateway client.
+// ---- Bridge ----
+
+/// Discord connector bridge — forwards messages to the Ozzie gateway.
 ///
-/// Runs as a standalone bridge process. Discord messages are forwarded to the
-/// Ozzie gateway via JSON-RPC WebSocket; responses are sent back to Discord.
+/// Access control is delegated to the gateway's pairing system.
+/// The bridge forwards all non-bot messages; unpaired users receive
+/// a hint to use `/pair`.
 pub struct DiscordBridge {
     token: String,
-    db: Arc<Mutex<DiscordDatabase>>,
-    db_path: Option<String>,
 }
 
 impl DiscordBridge {
-    pub fn new(token: String, db_path: Option<String>) -> Result<Self, String> {
+    pub fn new(token: String) -> Result<Self, String> {
         if token.is_empty() {
-            return Err("discord: token is required".to_string());
+            return Err("discord: bot token is required".to_string());
         }
-
-        // Load DB from file if path provided
-        let db = if let Some(ref path) = db_path {
-            match std::fs::read_to_string(path) {
-                Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-                Err(_) => DiscordDatabase::default(),
-            }
-        } else {
-            DiscordDatabase::default()
-        };
-
-        Ok(Self {
-            token,
-            db: Arc::new(Mutex::new(db)),
-            db_path,
-        })
+        Ok(Self { token })
     }
 
-    /// Creates a bridge from `OZZIE_CONNECTOR_CONFIG` environment variable.
+    /// Creates a bridge from environment variables.
     ///
-    /// Expected JSON: `{"db_path": "...", "token": "..."}`
-    /// The token can also come from `DISCORD_BOT_TOKEN` env var.
-    /// Used when launched by the ProcessSupervisor.
+    /// Reads `OZZIE_CONNECTOR_CONFIG` JSON (`{"token": "..."}`).
+    /// Falls back to `DISCORD_BOT_TOKEN` env var.
     pub fn from_env() -> Result<Self, String> {
         let json = std::env::var("OZZIE_CONNECTOR_CONFIG")
             .map_err(|_| "OZZIE_CONNECTOR_CONFIG not set".to_string())?;
         let cfg: serde_json::Value =
-            serde_json::from_str(&json).map_err(|e| format!("invalid OZZIE_CONNECTOR_CONFIG: {e}"))?;
+            serde_json::from_str(&json).map_err(|e| format!("invalid config: {e}"))?;
 
         let token = cfg
             .get("token")
             .and_then(|v| v.as_str())
             .map(String::from)
             .or_else(|| std::env::var("DISCORD_BOT_TOKEN").ok())
-            .ok_or("discord: token required in OZZIE_CONNECTOR_CONFIG or DISCORD_BOT_TOKEN env")?;
+            .ok_or("discord: token required in config or DISCORD_BOT_TOKEN env")?;
 
-        let db_path = cfg
-            .get("db_path")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        Self::new(token, db_path)
+        Self::new(token)
     }
 
-    /// Runs the bridge. Connects to both Discord (serenity) and the Ozzie gateway (JSON-RPC).
-    ///
-    /// Falls back to `OZZIE_GATEWAY_URL` and `OZZIE_GATEWAY_TOKEN` env vars
-    /// when the corresponding arguments are not provided.
+    /// Run the bridge. Connects to Discord and the Ozzie gateway.
     pub async fn run(&self, gateway_url: &str, gateway_token: Option<&str>) -> Result<(), String> {
-        // Resolve gateway URL/token from env vars if not provided
         let gateway_url = if gateway_url.is_empty() {
             std::env::var("OZZIE_GATEWAY_URL")
-                .unwrap_or_else(|_| "ws://127.0.0.1:18420/ws".to_string())
+                .unwrap_or_else(|_| DEFAULT_GATEWAY_URL.to_string())
         } else {
             gateway_url.to_string()
         };
         let token_env = std::env::var("OZZIE_GATEWAY_TOKEN").ok();
         let gateway_token: Option<String> = gateway_token.map(String::from).or(token_env);
 
-        // Channel for Discord → gateway messages
         let (inbound_tx, mut inbound_rx) = mpsc::unbounded_channel::<InboundMessage>();
-
-        // Channel for gateway → Discord responses
         let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<OutboundMessage>();
-
         let shutdown = Arc::new(Notify::new());
 
-        // Start serenity bot
         let intents = GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::DIRECT_MESSAGES
             | GatewayIntents::MESSAGE_CONTENT;
 
-        let bot_id = Arc::new(Mutex::new(None::<UserId>));
-
         let mut client = Client::builder(&self.token, intents)
-            .event_handler(DiscordEventHandler {
-                inbound_tx,
-                db: self.db.clone(),
-                db_path: self.db_path.clone(),
-                bot_id: bot_id.clone(),
-            })
+            .event_handler(DiscordEventHandler { inbound_tx })
             .await
             .map_err(|e| format!("discord client: {e}"))?;
 
         let http = client.http.clone();
         let shutdown2 = shutdown.clone();
-
-        // Spawn serenity in background
         let shard_manager = client.shard_manager.clone();
+
         tokio::spawn(async move {
             tokio::select! {
                 result = client.start() => {
@@ -186,31 +146,27 @@ impl DiscordBridge {
 
         info!("discord bridge: connecting to gateway {gateway_url}");
 
-        // Connect to Ozzie gateway
-        let mut ozzie = OzzieClient::connect(&gateway_url, gateway_token.as_deref())
+        let mut gateway = WsGatewayClient::connect(&gateway_url, gateway_token.as_deref())
             .await
             .map_err(|e| format!("gateway connect: {e}"))?;
 
-        // Per-channel session mapping
         let mut channel_sessions: HashMap<String, String> = HashMap::new();
 
-        // Spawn outbound writer (gateway → Discord)
+        // Outbound writer: gateway responses → Discord messages
         let http2 = http.clone();
         tokio::spawn(async move {
             while let Some(msg) = outbound_rx.recv().await {
-                let channel_id: u64 = match msg.channel_id.parse() {
-                    Ok(id) => id,
-                    Err(_) => continue,
+                let Ok(channel_id) = msg.channel_id.parse::<u64>() else {
+                    continue;
                 };
 
                 let mut builder = CreateMessage::new().content(&msg.content);
-                if let Some(ref reply_id) = msg.reply_to_id
-                    && let Ok(id) = reply_id.parse::<u64>()
-                {
-                    builder = builder.reference_message(serenity::all::MessageReference::from((
-                        ChannelId::new(channel_id),
-                        MessageId::new(id),
-                    )));
+                if let Some(Ok(id)) = msg.reply_to_id.as_ref().map(|r| r.parse::<u64>()) {
+                    builder =
+                        builder.reference_message(serenity::all::MessageReference::from((
+                            ChannelId::new(channel_id),
+                            MessageId::new(id),
+                        )));
                 }
 
                 if let Err(e) = ChannelId::new(channel_id).send_message(&http2, builder).await {
@@ -221,29 +177,23 @@ impl DiscordBridge {
 
         info!("discord bridge: running");
 
-        // Main loop: route messages between Discord and gateway
+        // Main loop: messages → gateway → Discord reply
         loop {
             tokio::select! {
-                // Discord → Gateway
                 Some(msg) = inbound_rx.recv() => {
-                    // Get or create session for this channel
                     let session_id = if let Some(sid) = channel_sessions.get(&msg.channel_id) {
                         sid.clone()
                     } else {
-                        match ozzie.open_session(OpenSessionOpts {
-                            session_id: None,
-                            working_dir: None,
-                        }).await {
-                            Ok(sid) => {
-                                // Accept all tools for connector sessions
-                                if let Err(e) = ozzie.accept_all_tools().await {
+                        match gateway.open_session(OpenSessionOpts::default()).await {
+                            Ok(info) => {
+                                if let Err(e) = gateway.accept_all_tools().await {
                                     warn!(error = %e, "failed to accept all tools");
                                 }
-                                channel_sessions.insert(msg.channel_id.clone(), sid.clone());
-                                sid
+                                channel_sessions.insert(msg.channel_id.clone(), info.session_id.clone());
+                                info.session_id
                             }
                             Err(e) => {
-                                warn!(error = %e, "failed to open session for channel {}", msg.channel_id);
+                                warn!(error = %e, "failed to open session");
                                 continue;
                             }
                         }
@@ -251,22 +201,25 @@ impl DiscordBridge {
 
                     debug!(channel = %msg.channel_id, session = %session_id, "forwarding to gateway");
 
-                    if let Err(e) = ozzie.send_connector_message(
-                        "discord",
-                        &msg.channel_id,
-                        &msg.author,
-                        &msg.content,
-                        Some(msg.message_id.as_str()).filter(|s| !s.is_empty()),
-                        Some(msg.server_id.as_str()),
-                    ).await {
+                    if let Err(e) = gateway
+                        .send_connector_message(ConnectorMessageParams {
+                            connector: CONNECTOR_NAME.into(),
+                            channel_id: msg.channel_id.clone(),
+                            author: msg.author_id.clone(),
+                            content: msg.content.clone(),
+                            message_id: (!msg.message_id.is_empty())
+                                .then(|| msg.message_id.clone()),
+                            server_id: None,
+                        })
+                        .await
+                    {
                         warn!(error = %e, "send_connector_message failed");
                         continue;
                     }
 
-                    // Wait for response and route back to Discord
                     let channel_id = msg.channel_id.clone();
                     let message_id = msg.message_id.clone();
-                    match self.wait_for_response(&mut ozzie).await {
+                    match self.wait_for_response(&mut gateway).await {
                         Ok(content) => {
                             if let Err(e) = outbound_tx.send(OutboundMessage {
                                 channel_id,
@@ -278,13 +231,11 @@ impl DiscordBridge {
                         }
                         Err(e) => {
                             warn!(error = %e, "response error");
-                            if let Err(e) = outbound_tx.send(OutboundMessage {
+                            let _ = outbound_tx.send(OutboundMessage {
                                 channel_id,
-                                content: format!("⚠️ Error: {e}"),
+                                content: format!("Error: {e}"),
                                 reply_to_id: Some(message_id),
-                            }) {
-                                warn!(error = %e, "outbound channel closed");
-                            }
+                            });
                         }
                     }
                 }
@@ -296,8 +247,9 @@ impl DiscordBridge {
         Ok(())
     }
 
-    async fn wait_for_response(&self, client: &mut OzzieClient) -> Result<String, String> {
-        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(300);
+    async fn wait_for_response(&self, gateway: &mut WsGatewayClient) -> Result<String, String> {
+        let deadline =
+            tokio::time::Instant::now() + tokio::time::Duration::from_secs(RESPONSE_TIMEOUT_SECS);
 
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -305,55 +257,30 @@ impl DiscordBridge {
                 return Err("timeout".to_string());
             }
 
-            match tokio::time::timeout(remaining, client.read_frame()).await {
-                Ok(Ok(frame)) => {
-                    if !frame.is_notification() {
-                        continue;
+            match tokio::time::timeout(remaining, gateway.read_notification()).await {
+                Ok(Ok(notification)) => match notification {
+                    Notification::AssistantMessage(e) => return Ok(e.content),
+                    Notification::ConnectorReply(e) if e.connector == CONNECTOR_NAME => {
+                        return Ok(e.content);
                     }
-
-                    match frame.event_kind() {
-                        Some(EventKind::AssistantMessage) => {
-                            let content = frame
-                                .params
-                                .as_ref()
-                                .and_then(|p| p.get("content"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            return Ok(content);
+                    Notification::PromptRequest(e) => {
+                        if let Err(err) = gateway
+                            .respond_to_prompt(PromptResponseParams {
+                                token: e.token,
+                                value: Some("session".to_string()),
+                                text: None,
+                            })
+                            .await
+                        {
+                            warn!(error = %err, "failed to respond to prompt");
                         }
-                        Some(EventKind::PromptRequest) => {
-                            if let Some(token) = frame
-                                .params
-                                .as_ref()
-                                .and_then(|p| p.get("token"))
-                                .and_then(|v| v.as_str())
-                                && let Err(e) = client
-                                    .respond_to_prompt(PromptResponseParams {
-                                        token: token.to_string(),
-                                        value: Some("session".to_string()),
-                                        text: None,
-                                    })
-                                    .await
-                            {
-                                warn!(error = %e, "failed to respond to prompt");
-                            }
-                        }
-                        Some(EventKind::Error) => {
-                            let msg = frame
-                                .params
-                                .as_ref()
-                                .and_then(|p| p.get("message"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown error");
-                            return Err(msg.to_string());
-                        }
-                        _ => {}
                     }
-                }
-                Ok(Err(ozzie_client::ClientError::Closed)) => {
-                    return Err("connection closed".to_string());
-                }
+                    Notification::Error(e) => {
+                        return Err(e.message.unwrap_or_else(|| "unknown error".into()));
+                    }
+                    _ => {}
+                },
+                Ok(Err(GatewayError::Closed)) => return Err("connection closed".to_string()),
                 Ok(Err(e)) => return Err(format!("read error: {e}")),
                 Err(_) => return Err("timeout".to_string()),
             }
@@ -365,30 +292,20 @@ impl DiscordBridge {
 
 struct DiscordEventHandler {
     inbound_tx: mpsc::UnboundedSender<InboundMessage>,
-    db: Arc<Mutex<DiscordDatabase>>,
-    db_path: Option<String>,
-    bot_id: Arc<Mutex<Option<UserId>>>,
 }
 
 #[async_trait::async_trait]
 impl EventHandler for DiscordEventHandler {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        info!(user = %ready.user.name, guilds = ready.guilds.len(), "discord bot connected");
-        *self.bot_id.lock().await = Some(ready.user.id);
+        info!(
+            user = %ready.user.name,
+            guilds = ready.guilds.len(),
+            "discord bot connected"
+        );
 
-        if let Err(e) = Command::set_global_commands(&ctx.http, vec![]).await {
-            warn!(error = %e, "failed to clear global commands");
-        }
-
-        for guild_status in &ready.guilds {
-            self.register_guild_commands(&ctx, guild_status.id).await;
-        }
-    }
-
-    async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
-        if is_new == Some(true) {
-            info!(guild = %guild.id, name = %guild.name, "bot joined new guild");
-            self.register_guild_commands(&ctx, guild.id).await;
+        match Command::set_global_commands(&ctx.http, build_commands()).await {
+            Ok(cmds) => info!(count = cmds.len(), "global commands registered"),
+            Err(e) => warn!(error = %e, "failed to register global commands"),
         }
     }
 
@@ -397,344 +314,62 @@ impl EventHandler for DiscordEventHandler {
             return;
         }
 
-        // Apply channel respond-mode filter
-        let channel_id_str = msg.channel_id.to_string();
-        if let Some(guild_id) = msg.guild_id
-            && let Some(guild) = self.db.lock().await.guilds.get(&guild_id.to_string()).cloned()
-            && let Some(ch_cfg) = guild.channels.get(&channel_id_str)
-            && ch_cfg.respond_mode == RespondMode::WithMention
-        {
-            let bot_id = *self.bot_id.lock().await;
-            let mentioned = bot_id
-                .map(|id| msg.mentions.iter().any(|u| u.id == id))
-                .unwrap_or(false);
-            if !mentioned {
-                return;
-            }
-        }
-
         if let Err(e) = self.inbound_tx.send(InboundMessage {
             channel_id: msg.channel_id.to_string(),
             message_id: msg.id.to_string(),
-            author: msg.author.name.clone(),
+            author_id: msg.author.id.to_string(),
             content: msg.content.clone(),
-            server_id: msg
-                .guild_id
-                .map(|g| g.to_string())
-                .unwrap_or_default(),
         }) {
             warn!(error = %e, "inbound channel closed");
         }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        match interaction {
-            Interaction::Component(component) => {
-                self.handle_component_interaction(&ctx, component).await;
-            }
-            Interaction::Command(cmd) => {
-                match cmd.data.name.as_str() {
-                    "init" => self.handle_init_cmd(&ctx, &cmd).await,
-                    "channels" => self.handle_channels_interaction(&ctx, &cmd).await,
-                    _command_name => {
-                        // For other slash commands, defer and route as message
-                        if let Err(e) = cmd
-                            .create_response(
-                                &ctx.http,
-                                CreateInteractionResponse::Defer(
-                                    CreateInteractionResponseMessage::new(),
-                                ),
-                            )
-                            .await
-                        {
-                            warn!(error = %e, "failed to defer slash command response");
-                        }
+        let Interaction::Command(cmd) = interaction else {
+            return;
+        };
 
-                        if let Err(e) = self.inbound_tx.send(InboundMessage {
-                            channel_id: cmd.channel_id.to_string(),
-                            message_id: String::new(),
-                            author: cmd.user.name.clone(),
-                            content: format!("/{_command_name}"),
-                            server_id: cmd
-                                .guild_id
-                                .map(|g| g.to_string())
-                                .unwrap_or_default(),
-                        }) {
-                            warn!(error = %e, "inbound channel closed");
-                        }
-                    }
+        match cmd.data.name.as_str() {
+            "pair" | "clear" => {
+                // Acknowledge immediately with ephemeral message so Discord
+                // stops showing "thinking". The actual reply arrives as a
+                // regular message from the gateway.
+                if let Err(e) = cmd
+                    .create_response(
+                        &ctx.http,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Forwarding to Ozzie…")
+                                .ephemeral(true),
+                        ),
+                    )
+                    .await
+                {
+                    warn!(error = %e, "failed to acknowledge command");
                 }
+
+                let _ = self.inbound_tx.send(InboundMessage {
+                    channel_id: cmd.channel_id.to_string(),
+                    message_id: String::new(),
+                    author_id: cmd.user.id.to_string(),
+                    content: format!("/{}", cmd.data.name),
+                });
             }
             _ => {}
         }
     }
 }
 
-// ---- Command registration ----
-
 fn build_commands() -> Vec<CreateCommand> {
     vec![
         CreateCommand::new("pair").description("Request pairing with Ozzie"),
-        CreateCommand::new("status").description("Check your Ozzie pairing status"),
-        CreateCommand::new("init")
-            .description("Set up Ozzie roles in this server (guild admins only)"),
-        CreateCommand::new("clear")
-            .description("Start a new conversation (keeps history in logs)"),
-        CreateCommand::new("channels")
-            .description("Configure how Ozzie responds in a channel (guild admins only)")
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "mode",
-                    "Response mode or channel type",
-                )
-                .required(true)
-                .add_string_choice("has-news", "has-news")
-                .add_string_choice("has-support", "has-support")
-                .add_string_choice("has-admin", "has-admin")
-                .add_string_choice("with-mention", "with-mention")
-                .add_string_choice("all-message", "all-message"),
-            )
-            .add_option(
-                CreateCommandOption::new(CommandOptionType::Channel, "channel", "Target channel")
-                    .required(true),
-            ),
+        CreateCommand::new("clear").description("Start a new conversation"),
     ]
-}
-
-// ---- Admin command handlers ----
-
-impl DiscordEventHandler {
-    async fn register_guild_commands(&self, ctx: &Context, guild_id: GuildId) {
-        match guild_id.set_commands(&ctx.http, build_commands()).await {
-            Ok(cmds) => info!(guild = %guild_id, count = cmds.len(), "guild commands registered"),
-            Err(e) => warn!(guild = %guild_id, error = %e, "failed to register guild commands"),
-        }
-    }
-
-    async fn handle_component_interaction(&self, ctx: &Context, component: ComponentInteraction) {
-        let rating = match component.data.custom_id.as_str() {
-            "feedback_positive" => "positive",
-            "feedback_negative" => "negative",
-            _ => return,
-        };
-
-        info!(
-            channel = %component.channel_id,
-            message = %component.message.id,
-            user = %component.user.id,
-            rating,
-            "feedback received"
-        );
-
-        if let Err(e) = component
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new().components(vec![]),
-                ),
-            )
-            .await
-        {
-            warn!(error = %e, "failed to update feedback message");
-        }
-    }
-
-    async fn handle_init_cmd(&self, ctx: &Context, cmd: &CommandInteraction) {
-        let Some(guild_id) = cmd.guild_id else {
-            if let Err(e) = cmd
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("⚠️ `/init` must be used in a server.")
-                            .ephemeral(true),
-                    ),
-                )
-                .await
-            {
-                warn!(error = %e, "failed to send init guild-only response");
-            }
-            return;
-        };
-
-        if let Err(e) = cmd
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new()),
-            )
-            .await
-        {
-            warn!(error = %e, "failed to defer init response");
-        }
-
-        let existing_roles: HashMap<String, RoleId> =
-            match ctx.http.get_guild_roles(guild_id).await {
-                Ok(roles) => roles.into_iter().map(|r| (r.name.clone(), r.id)).collect(),
-                Err(e) => {
-                    warn!(error = %e, "failed to fetch guild roles");
-                    HashMap::new()
-                }
-            };
-
-        let role_defs = [("ozzie-admin", "admin"), ("ozzie-support", "support")];
-        let mut created: Vec<String> = Vec::new();
-        let mut skipped: Vec<String> = Vec::new();
-
-        for (role_name, policy) in &role_defs {
-            if let Some(&role_id) = existing_roles.get(*role_name) {
-                let mut db = self.db.lock().await;
-                db.guilds
-                    .entry(guild_id.to_string())
-                    .or_default()
-                    .role_policies
-                    .insert(role_id.to_string(), policy.to_string());
-                self.save_db(&db);
-                skipped.push(format!("`{role_name}`"));
-            } else {
-                match guild_id
-                    .create_role(&ctx.http, EditRole::new().name(*role_name))
-                    .await
-                {
-                    Ok(role) => {
-                        let mut db = self.db.lock().await;
-                        db.guilds
-                            .entry(guild_id.to_string())
-                            .or_default()
-                            .role_policies
-                            .insert(role.id.to_string(), policy.to_string());
-                        self.save_db(&db);
-                        created.push(format!("`{role_name}` → `{policy}`"));
-                    }
-                    Err(e) => warn!(role = role_name, error = %e, "failed to create role"),
-                }
-            }
-        }
-
-        let mut lines = Vec::new();
-        if !created.is_empty() {
-            lines.push(format!("Roles created: {}", created.join(", ")));
-        }
-        if !skipped.is_empty() {
-            lines.push(format!("Already existed: {}", skipped.join(", ")));
-        }
-        lines.push("Assign these roles to your members to control access.".to_string());
-
-        if let Err(e) = cmd
-            .edit_response(
-                &ctx.http,
-                serenity::all::EditInteractionResponse::new().content(lines.join("\n")),
-            )
-            .await
-        {
-            warn!(error = %e, "failed to edit init response");
-        }
-    }
-
-    async fn handle_channels_interaction(&self, ctx: &Context, cmd: &CommandInteraction) {
-        let Some(guild_id) = cmd.guild_id else {
-            if let Err(e) = cmd
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("⚠️ `/channels` must be used in a server.")
-                            .ephemeral(true),
-                    ),
-                )
-                .await
-            {
-                warn!(error = %e, "failed to send channels guild-only response");
-            }
-            return;
-        };
-
-        let mode = cmd.data.options.iter().find(|o| o.name == "mode").and_then(|o| {
-            if let CommandDataOptionValue::String(s) = &o.value { Some(s.clone()) } else { None }
-        });
-
-        let channel = cmd.data.options.iter().find(|o| o.name == "channel").and_then(|o| {
-            if let CommandDataOptionValue::Channel(id) = &o.value { Some(*id) } else { None }
-        });
-
-        let (Some(mode), Some(channel_id)) = (mode, channel) else {
-            if let Err(e) = cmd
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("⚠️ Missing required options.")
-                            .ephemeral(true),
-                    ),
-                )
-                .await
-            {
-                warn!(error = %e, "failed to send missing options response");
-            }
-            return;
-        };
-
-        let content = match self.apply_channel_mode(guild_id.to_string(), channel_id.to_string(), &mode).await {
-            Ok(()) => format!("Channel <#{}> configured as `{mode}`.", channel_id),
-            Err(e) => format!("⚠️ {e}"),
-        };
-
-        if let Err(e) = cmd
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .content(content)
-                        .ephemeral(true),
-                ),
-            )
-            .await
-        {
-            warn!(error = %e, "failed to send channels response");
-        }
-    }
-
-    async fn apply_channel_mode(&self, guild_id: String, channel_id: String, mode: &str) -> Result<(), String> {
-        let mut db = self.db.lock().await;
-        let ch = db.guilds
-            .entry(guild_id)
-            .or_default()
-            .channels
-            .entry(channel_id)
-            .or_default();
-
-        match mode {
-            "has-news" => ch.kind = ChannelKind::News,
-            "has-support" => ch.kind = ChannelKind::Support,
-            "has-admin" => ch.kind = ChannelKind::Admin,
-            "with-mention" => ch.respond_mode = RespondMode::WithMention,
-            "all-message" => ch.respond_mode = RespondMode::AllMessage,
-            other => return Err(format!("Unknown mode `{other}`")),
-        }
-
-        self.save_db(&db);
-        Ok(())
-    }
-
-    fn save_db(&self, db: &DiscordDatabase) {
-        if let Some(ref path) = self.db_path {
-            match serde_json::to_string_pretty(db) {
-                Ok(json) => {
-                    if let Err(e) = std::fs::write(path, json) {
-                        warn!(error = %e, path, "failed to write discord db");
-                    }
-                }
-                Err(e) => {
-                    warn!(error = %e, "failed to serialize discord db");
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use serenity::all::ChannelId;
 
     fn parse_channel_ref(s: &str) -> Option<ChannelId> {
         let id_str = if s.starts_with("<#") && s.ends_with('>') {

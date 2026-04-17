@@ -310,7 +310,7 @@ mod tests {
                 crate::profile::WhoamiEntry {
                     info: "Fullstack dev, AI/agents".to_string(),
                     created_at: chrono::NaiveDate::from_ymd_opt(2026, 3, 28).unwrap(),
-                    source: "intro".to_string(),
+                    source: crate::profile::WhoamiSource::Intro,
                 },
             ],
             created_at: chrono::NaiveDate::from_ymd_opt(2026, 3, 28).unwrap(),

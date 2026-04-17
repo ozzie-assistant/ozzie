@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Ozzie Agent OS — CLI binary"
+publish = false
+
+[package.metadata.dist]
+dist = true
 
 [[bin]]
 name = "ozzie"

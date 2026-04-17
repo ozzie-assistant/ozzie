@@ -43,9 +43,6 @@ struct DiscordStartArgs {
     /// Discord bot token (reads from config if not provided).
     #[arg(long)]
     token: Option<String>,
-    /// Path to the Discord database file.
-    #[arg(long)]
-    db_path: Option<String>,
     /// Gateway URL.
     #[arg(long, default_value = "http://127.0.0.1:18420")]
     gateway: String,
@@ -161,11 +158,7 @@ async fn start_discord(args: DiscordStartArgs) -> anyhow::Result<()> {
         }
     };
 
-    let db_path = args
-        .db_path
-        .unwrap_or_else(|| base.join("connectors/discord.jsonc").to_string_lossy().to_string());
-
-    let bridge = DiscordBridge::new(discord_token, Some(db_path))
+    let bridge = DiscordBridge::new(discord_token)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     bridge

@@ -7,11 +7,10 @@ use tracing::{error, info, warn};
 // Connectors are now standalone JSON-RPC bridges:
 //   ozzie connector discord start
 //   ozzie connector file start
-use ozzie_discord_bridge::DiscordDatabase;
 use ozzie_core::actors::{ActorPool, ActorPoolConfig};
 use ozzie_core::config;
 use ozzie_utils::config::{
-    config_path, discord_db_path, dotenv_path, logs_path, memory_path, ozzie_path, sessions_path,
+    config_path, dotenv_path, logs_path, memory_path, ozzie_path, sessions_path,
     skills_path,
 };
 use ozzie_core::conscience::ToolPermissions;
@@ -22,8 +21,6 @@ use ozzie_runtime::JsonPairingStore;
 use ozzie_core::prompt;
 use ozzie_utils::secrets;
 use ozzie_core::skills::{self, SkillRegistry};
-use ozzie_core::storage::ConfigStore;
-use ozzie_runtime::storage::FileStorage;
 use ozzie_gateway::hub::HubHandler;
 use ozzie_gateway::{AppState, Hub, Server, ServerConfig};
 use ozzie_memory::{MarkdownPageStore, MarkdownStore};
@@ -130,10 +127,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     );
     info!(count = project_registry.len(), "projects discovered");
 
-    let discord_db: Arc<dyn ConfigStore<DiscordDatabase>> =
-        Arc::new(FileStorage::new(discord_db_path()));
-
-    let (pairing_manager, chat_storage) = init_pairing(bus.clone(), &discord_db)?;
+    let (pairing_manager, chat_storage) = init_pairing(bus.clone())?;
 
     let permissions = Arc::new(ToolPermissions::new(Vec::new()));
     let approver = Arc::new(EventBusApprovalRequester::new(bus.clone()));
@@ -239,7 +233,6 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let supervisor = init_connector_supervisor(&cfg, &args).await;
     supervisor.start_all().await;
     let _monitor = supervisor.start_monitor();
-    let _ = discord_db; // kept for pairing DB reference
 
     setup_file_logging()?;
 
@@ -460,27 +453,17 @@ async fn init_tools(
 
 fn init_pairing(
     bus: Arc<Bus>,
-    discord_db: &Arc<dyn ConfigStore<DiscordDatabase>>,
 ) -> anyhow::Result<(Arc<PairingManager>, Arc<JsonPairingStore>)> {
     let chat_storage = Arc::new(JsonPairingStore::new(&ozzie_path()));
     let pending_pairings = Arc::new(MemoryPendingPairings::new());
 
-    let guild_role_policies = discord_db
-        .read()
-        .map(|db| {
-            db.guilds
-                .into_iter()
-                .filter(|(_, g)| !g.role_policies.is_empty())
-                .map(|(guild_id, g)| (guild_id, g.role_policies))
-                .collect()
-        })
-        .unwrap_or_default();
-
+    // Guild role policies are now managed by the connector bridge itself.
+    // The gateway pairing system works with empty policies (all pairing is explicit).
     let pairing_manager = Arc::new(PairingManager::new_with_guild_roles(
         pending_pairings,
         chat_storage.clone() as Arc<dyn PairingStorage>,
         bus,
-        guild_role_policies,
+        HashMap::new(),
     ));
     Ok((pairing_manager, chat_storage))
 }

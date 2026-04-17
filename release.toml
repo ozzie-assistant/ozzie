@@ -1,0 +1,17 @@
+[workspace]
+# All publishable crates share the same version
+shared-version = true
+# Tag format — triggers cargo-dist workflow
+tag-name = "v{{version}}"
+
+[default]
+# Push commits + tags (triggers cargo-dist CI)
+push = true
+# Publish to crates.io (only crates without publish = false)
+publish = true
+# Create git tag
+tag = true
+# Commit message
+pre-release-commit-message = "chore: release v{{version}}"
+# Verify before publish
+verify = true

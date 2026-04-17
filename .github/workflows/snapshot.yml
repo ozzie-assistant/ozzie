@@ -66,7 +66,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
-          # arm64 cross-compiler
           if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu
             mkdir -p .cargo
@@ -82,19 +81,16 @@ jobs:
       - name: Clippy
         run: cargo clippy --release --workspace --target ${{ matrix.target }} -- -D warnings
 
-      # Tests run on native target only (cross-compiled targets can't execute)
       - name: Test
         if: matrix.can_run
         run: cargo test --release --workspace
 
-      # ── Smoke tests ──
+      # ── Smoke tests (build + verify binary boots) ──
 
-      # Build the actual binary for smoke testing
       - name: Build binary
         if: matrix.can_run || matrix.smoke_docker
         run: cargo build --release --package ozzie-cli --target ${{ matrix.target }}
 
-      # Direct binary smoke test (native targets)
       - name: Smoke test — binary
         if: matrix.can_run
         shell: bash
@@ -108,7 +104,6 @@ jobs:
           "$BINARY" status 2>&1 || true
           echo "::endgroup::"
 
-      # Docker smoke test (linux-amd64 only — no push, just verify it boots)
       - name: Smoke test — Docker
         if: matrix.smoke_docker
         run: |

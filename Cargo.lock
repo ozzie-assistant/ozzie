@@ -1978,6 +1978,7 @@ dependencies = [
  "ozzie-types",
  "rand 0.9.2",
  "regex",
+ "sage-profile",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -1993,14 +1994,13 @@ name = "ozzie-discord-bridge"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "ozzie-client",
- "ozzie-protocol",
- "ozzie-types",
+ "ozzie-gateway-client",
  "serde",
  "serde_json",
  "serenity",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2041,6 +2041,20 @@ dependencies = [
  "tower-http",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "ozzie-gateway-client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "ozzie-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
 ]
 
 [[package]]
@@ -2139,24 +2153,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "ozzie-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossterm 0.28.1",
- "futures-util",
- "ozzie-client",
- "ozzie-core",
- "pulldown-cmark",
- "ratatui",
- "serde",
- "serde_json",
  "tokio",
  "tracing",
 ]
@@ -2917,6 +2913,16 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "sage-profile"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "salsa20"

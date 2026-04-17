@@ -1,21 +1,24 @@
 [package]
 name = "ozzie-discord-bridge"
 version = "0.1.0"
+description = "Ozzie Discord connector bridge (serenity + JSON-RPC gateway client)"
 edition.workspace = true
-license.workspace = true
 repository.workspace = true
-description = "Ozzie Agent OS — Discord connector bridge (serenity + JSON-RPC)"
+license.workspace = true
+publish = false
+
+[package.metadata.dist]
+dist = true
 
 [dependencies]
-ozzie-client = { workspace = true }
-ozzie-protocol = { workspace = true }
-ozzie-types = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-tokio = { workspace = true }
-async-trait = { workspace = true }
-serenity = { version = "0.12", default-features = false, features = ["builder", "client", "gateway", "model", "rustls_backend"] }
+ozzie-gateway-client.workspace = true
+serenity.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { workspace = true, features = ["full"] }
+async-trait.workspace = true
 
 [[bin]]
 name = "ozzie-discord-bridge"

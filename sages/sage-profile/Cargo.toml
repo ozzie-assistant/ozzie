@@ -1,0 +1,15 @@
+[package]
+name = "sage-profile"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "User profile management for AI agents — identity facts, observations, LLM-driven consolidation"
+keywords = ["ai-agent", "user-profile", "personalization"]
+categories = ["data-structures"]
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }

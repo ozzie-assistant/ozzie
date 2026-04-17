@@ -8,6 +8,7 @@ description = "Ozzie Agent OS — pure domain layer"
 
 [dependencies]
 ozzie-types = { workspace = true }
+sage-profile = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }

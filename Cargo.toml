@@ -1,9 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "connectors/*", "clients/*"]
+members = ["crates/*", "connectors/*", "sages/*"]
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/dohr-michael/ozzie"
 
@@ -44,6 +45,18 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4"] }
 
+# Logging
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Discord
+serenity = { version = "0.12", default-features = false, features = [
+    "builder",
+    "client",
+    "gateway",
+    "model",
+    "rustls_backend",
+] }
+
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 comfy-table = "7"
@@ -59,20 +72,26 @@ paste = "1"
 age = { version = "0.11", features = ["armor"] }
 
 # Internal crates
-ozzie-core = { path = "crates/ozzie-core" }
-ozzie-types = { path = "crates/ozzie-types" }
-ozzie-llm = { path = "crates/ozzie-llm" }
-ozzie-runtime = { path = "crates/ozzie-runtime" }
-ozzie-tools = { path = "crates/ozzie-tools" }
-ozzie-protocol = { path = "crates/ozzie-protocol" }
-ozzie-client = { path = "crates/ozzie-client" }
-ozzie-gateway = { path = "crates/ozzie-gateway" }
-ozzie-memory = { path = "crates/ozzie-memory" }
-ozzie-utils = { path = "crates/ozzie-utils" }
+ozzie-core = { version = "0.1.0", path = "crates/ozzie-core" }
+ozzie-types = { version = "0.1.0", path = "crates/ozzie-types" }
+ozzie-llm = { version = "0.1.0", path = "crates/ozzie-llm" }
+ozzie-runtime = { version = "0.1.0", path = "crates/ozzie-runtime" }
+ozzie-tools = { version = "0.1.0", path = "crates/ozzie-tools" }
+ozzie-protocol = { version = "0.1.0", path = "crates/ozzie-protocol" }
+ozzie-client = { version = "0.1.0", path = "crates/ozzie-client" }
+ozzie-gateway = { version = "0.1.0", path = "crates/ozzie-gateway" }
+ozzie-memory = { version = "0.1.0", path = "crates/ozzie-memory" }
+ozzie-utils = { version = "0.1.0", path = "crates/ozzie-utils" }
 
-# Clients
-ozzie-tui = { path = "clients/ozzie-tui" }
+# Sages (independent publishable crates)
+sage-profile = { version = "0.1.0", path = "sages/sage-profile" }
 
 # Connectors
-ozzie-discord-bridge = { path = "connectors/ozzie-discord-bridge" }
-ozzie-file-bridge = { path = "connectors/ozzie-file-bridge" }
+ozzie-gateway-client = { version = "0.1.0", path = "connectors/ozzie-gateway-client" }
+ozzie-discord-bridge = { version = "0.1.0", path = "connectors/ozzie-discord-bridge" }
+ozzie-file-bridge = { version = "0.1.0", path = "connectors/ozzie-file-bridge" }
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

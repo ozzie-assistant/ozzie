@@ -93,7 +93,7 @@ pub async fn run(ozzie_path: &Path, language: Option<&str>) -> anyhow::Result<()
         profile.whoami.push(ozzie_core::profile::WhoamiEntry {
             info: entry.clone(),
             created_at: chrono::Utc::now().date_naive(),
-            source: "intro".to_string(),
+            source: ozzie_core::profile::WhoamiSource::Intro,
         });
     }
 
