@@ -1989,6 +1989,7 @@ dependencies = [
  "tracing",
  "worm-layered",
  "worm-profile",
+ "worm-sandbox",
 ]
 
 [[package]]
@@ -4545,6 +4546,18 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "worm-sandbox"
+version = "0.1.0"
+dependencies = [
+ "brush-parser",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

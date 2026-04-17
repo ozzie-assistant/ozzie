@@ -5,7 +5,7 @@ use brush_parser::ast::{
     IoRedirect, Pipeline, SimpleCommand, Word,
 };
 
-use super::sandbox::SandboxError;
+use crate::SandboxError;
 
 /// AST-based command validator using brush-parser.
 ///

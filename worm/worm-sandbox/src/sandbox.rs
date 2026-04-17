@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::ast_guard::AstGuard;
+use crate::AstGuard;
 
 /// Sandbox tool types that determine validation strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
