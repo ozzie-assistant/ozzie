@@ -6,7 +6,7 @@ members = ["crates/*", "connectors/*", "worm/*"]
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/dohr-michael/ozzie"
+repository = "https://github.com/ozzie-assistant/ozzie"
 
 [workspace.dependencies]
 # Core

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Shell command sandboxing for AI agents — AST validation, path jail, credential scrubbing"
+readme = "README.md"
 keywords = ["ai-agent", "sandbox", "security", "shell-parser"]
 categories = ["command-line-utilities"]
 

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Ozzie Agent OS — file connector bridge (JSONL I/O via JSON-RPC)"
+description = "Ozzie Assistant — file connector bridge (JSONL I/O via JSON-RPC)"
 publish = false
 
 [package.metadata.dist]

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Layered context compression for LLM agents — BM25 scoring, L0/L1/L2 progressive retrieval"
+readme = "README.md"
 keywords = ["ai-agent", "context-compression", "bm25", "retrieval"]
 categories = ["algorithms", "data-structures"]
 

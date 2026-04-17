@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "User profile management for AI agents — identity facts, observations, LLM-driven consolidation"
+readme = "README.md"
 keywords = ["ai-agent", "user-profile", "personalization"]
 categories = ["data-structures"]
 
