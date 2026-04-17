@@ -495,7 +495,7 @@ fn init_hub(
 fn init_auth(
     args: &GatewayArgs,
     device_storage: Arc<ozzie_runtime::JsonDeviceStore>,
-) -> anyhow::Result<Option<Arc<dyn ozzie_core::auth::Authenticator>>> {
+) -> anyhow::Result<Option<Arc<dyn ozzie_gateway::auth::Authenticator>>> {
     if args.insecure {
         info!("auth disabled (insecure mode)");
         return Ok(None);
@@ -512,7 +512,7 @@ fn init_auth(
             t
         }
         None => {
-            let auth = ozzie_core::auth::LocalAuth::generate();
+            let auth = ozzie_gateway::auth::LocalAuth::generate();
             let t = auth.token().to_string();
             if let Err(e) = std::fs::write(&token_path, &t) {
                 tracing::warn!(error = %e, "failed to persist .token");
@@ -523,16 +523,16 @@ fn init_auth(
         }
     };
 
-    let local_auth = Arc::new(ozzie_core::auth::LocalAuth::new(token))
-        as Arc<dyn ozzie_core::auth::Authenticator>;
-    let device_auth = Arc::new(ozzie_core::auth::DeviceAuth::new(
+    let local_auth = Arc::new(ozzie_gateway::auth::LocalAuth::new(token))
+        as Arc<dyn ozzie_gateway::auth::Authenticator>;
+    let device_auth = Arc::new(ozzie_gateway::auth::DeviceAuth::new(
         device_storage as Arc<dyn ozzie_core::domain::DeviceStorage>,
-    )) as Arc<dyn ozzie_core::auth::Authenticator>;
+    )) as Arc<dyn ozzie_gateway::auth::Authenticator>;
 
-    Ok(Some(Arc::new(ozzie_core::auth::CompositeAuth::new(vec![
+    Ok(Some(Arc::new(ozzie_gateway::auth::CompositeAuth::new(vec![
         local_auth,
         device_auth,
-    ])) as Arc<dyn ozzie_core::auth::Authenticator>))
+    ])) as Arc<dyn ozzie_gateway::auth::Authenticator>))
 }
 
 // ---- Helpers ----

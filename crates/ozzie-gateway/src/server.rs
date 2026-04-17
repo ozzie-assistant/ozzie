@@ -13,10 +13,10 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-use ozzie_core::auth::Authenticator;
+use crate::auth::Authenticator;
 use ozzie_core::events::EventBus;
 
-use crate::auth::auth_middleware;
+use crate::auth::middleware::auth_middleware;
 use crate::hub::Hub;
 use crate::memory_api;
 use crate::pair_device::{self, DeviceApprovalCache};
@@ -340,7 +340,7 @@ mod tests {
         assert_eq!(response.status(), 200);
     }
 
-    fn make_state_with_auth(auth: Option<Arc<dyn ozzie_core::auth::Authenticator>>) -> AppState {
+    fn make_state_with_auth(auth: Option<Arc<dyn crate::auth::Authenticator>>) -> AppState {
         let bus = Arc::new(Bus::new(64));
         let handler = Arc::new(NoopHandler);
         let hub = Hub::new(bus.clone(), handler);
@@ -363,7 +363,7 @@ mod tests {
     #[tokio::test]
     async fn health_always_public() {
         // Even with auth configured, /api/health should be accessible.
-        let auth = Arc::new(ozzie_core::auth::LocalAuth::new("secret"));
+        let auth = Arc::new(crate::auth::LocalAuth::new("secret"));
         let state = make_state_with_auth(Some(auth));
         let server = Server::new(ServerConfig::default(), state);
         let app = server.router();
@@ -383,7 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn events_requires_auth() {
-        let auth = Arc::new(ozzie_core::auth::LocalAuth::new("secret"));
+        let auth = Arc::new(crate::auth::LocalAuth::new("secret"));
         let state = make_state_with_auth(Some(auth));
         let server = Server::new(ServerConfig::default(), state);
         let app = server.router();
@@ -404,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn events_with_valid_auth() {
-        let auth = Arc::new(ozzie_core::auth::LocalAuth::new("secret"));
+        let auth = Arc::new(crate::auth::LocalAuth::new("secret"));
         let state = make_state_with_auth(Some(auth));
         let server = Server::new(ServerConfig::default(), state);
         let app = server.router();

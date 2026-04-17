@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use ozzie_core::auth::{extract_bearer, Authenticator};
+use super::{extract_bearer, Authenticator};
 
 /// Device ID stored in request extensions after successful auth.
 #[derive(Clone, Debug)]
@@ -85,7 +85,7 @@ mod tests {
     use axum::middleware;
     use axum::routing::get;
     use axum::Router;
-    use ozzie_core::auth::{InsecureAuth, LocalAuth};
+    use crate::auth::{InsecureAuth, LocalAuth};
     use tower::ServiceExt;
 
     fn make_router(auth: Option<Arc<dyn Authenticator>>) -> Router {

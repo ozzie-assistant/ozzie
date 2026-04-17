@@ -5,11 +5,11 @@ use super::traits::{AuthError, Authenticator};
 /// Validates the bearer token against stored device records and updates
 /// `last_seen` on every successful authentication.
 pub struct DeviceAuth {
-    devices: std::sync::Arc<dyn crate::domain::DeviceStorage>,
+    devices: std::sync::Arc<dyn ozzie_core::domain::DeviceStorage>,
 }
 
 impl DeviceAuth {
-    pub fn new(devices: std::sync::Arc<dyn crate::domain::DeviceStorage>) -> Self {
+    pub fn new(devices: std::sync::Arc<dyn ozzie_core::domain::DeviceStorage>) -> Self {
         Self { devices }
     }
 }
