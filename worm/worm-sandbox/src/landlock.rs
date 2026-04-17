@@ -2,7 +2,7 @@ use std::os::unix::io::AsRawFd;
 use std::process::Output;
 use std::time::Duration;
 
-use super::{SandboxError, SandboxExecutor, SandboxPermissions};
+use crate::{ExecutorError, SandboxExecutor, SandboxPermissions};
 
 // ---- Landlock kernel ABI structs ----
 // These are not exposed by the `libc` crate, so we define them here
@@ -62,13 +62,13 @@ impl SandboxExecutor for LandlockExecutor {
         work_dir: &str,
         permissions: &SandboxPermissions,
         timeout: Duration,
-    ) -> Result<Output, SandboxError> {
+    ) -> Result<Output, ExecutorError> {
         let perms = permissions.clone();
 
         let mut cmd = tokio::process::Command::new("sh");
         cmd.args(["-c", command]);
         cmd.current_dir(work_dir);
-        ozzie_core::conscience::strip_blocked_env(&mut cmd);
+        crate::strip_blocked_env(&mut cmd);
 
         // SAFETY: pre_exec runs between fork and exec in the child process.
         // We only call async-signal-safe functions and Landlock syscalls.
@@ -83,8 +83,8 @@ impl SandboxExecutor for LandlockExecutor {
 
         tokio::time::timeout(timeout, cmd.output())
             .await
-            .map_err(|_| SandboxError::Timeout(timeout))?
-            .map_err(|e| SandboxError::Command(e.to_string()))
+            .map_err(|_| ExecutorError::Timeout(timeout))?
+            .map_err(|e| ExecutorError::Command(e.to_string()))
     }
 
     fn backend_name(&self) -> &'static str {
@@ -93,7 +93,7 @@ impl SandboxExecutor for LandlockExecutor {
 }
 
 /// Applies Landlock restrictions in the current process (child, after fork).
-fn apply_landlock(perms: &SandboxPermissions) -> Result<(), SandboxError> {
+fn apply_landlock(perms: &SandboxPermissions) -> Result<(), ExecutorError> {
     // Access flags we want to control (Landlock ABI v1)
     const ACCESS_FS_ALL: u64 = (1 << 0)  // EXECUTE
         | (1 << 1)  // WRITE_FILE
@@ -126,7 +126,7 @@ fn apply_landlock(perms: &SandboxPermissions) -> Result<(), SandboxError> {
         )
     };
     if ruleset_fd < 0 {
-        return Err(SandboxError::Setup("landlock_create_ruleset failed".into()));
+        return Err(ExecutorError::Setup("landlock_create_ruleset failed".into()));
     }
     let ruleset_fd = ruleset_fd as i32;
 
@@ -152,7 +152,7 @@ fn apply_landlock(perms: &SandboxPermissions) -> Result<(), SandboxError> {
     let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
     if ret != 0 {
         unsafe { libc::close(ruleset_fd) };
-        return Err(SandboxError::Setup(
+        return Err(ExecutorError::Setup(
             "prctl(PR_SET_NO_NEW_PRIVS) failed".into(),
         ));
     }
@@ -164,7 +164,7 @@ fn apply_landlock(perms: &SandboxPermissions) -> Result<(), SandboxError> {
     unsafe { libc::close(ruleset_fd) };
 
     if ret != 0 {
-        return Err(SandboxError::Setup(
+        return Err(ExecutorError::Setup(
             "landlock_restrict_self failed".into(),
         ));
     }

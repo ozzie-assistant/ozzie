@@ -1,13 +1,9 @@
-mod executor;
-mod noop;
+mod bridge;
 
-#[cfg(target_os = "macos")]
-mod seatbelt;
-
-#[cfg(target_os = "linux")]
-mod landlock;
-
-pub use executor::{
-    create_command_sandbox, create_sandbox, NetworkPolicy, SandboxBridge, SandboxError,
-    SandboxExecutor, SandboxPermissions,
+// Re-export from worm-sandbox — OS-level sandbox executors.
+pub use worm_sandbox::{
+    create_sandbox, ExecutorError, NetworkPolicy, SandboxExecutor, SandboxPermissions,
 };
+
+// Ozzie-specific: bridge between domain CommandSandbox port and SandboxExecutor.
+pub use bridge::{create_command_sandbox, SandboxBridge};

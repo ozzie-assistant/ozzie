@@ -2,7 +2,7 @@ use std::io::Write as _;
 use std::process::Output;
 use std::time::Duration;
 
-use super::{NetworkPolicy, SandboxError, SandboxExecutor, SandboxPermissions};
+use crate::{NetworkPolicy, ExecutorError, SandboxExecutor, SandboxPermissions};
 
 /// macOS Seatbelt sandbox executor.
 ///
@@ -19,14 +19,14 @@ impl SandboxExecutor for SeatbeltExecutor {
         work_dir: &str,
         permissions: &SandboxPermissions,
         timeout: Duration,
-    ) -> Result<Output, SandboxError> {
+    ) -> Result<Output, ExecutorError> {
         let profile = generate_profile(permissions);
 
         // Write profile to a temp file
         let mut tmp = tempfile::NamedTempFile::new()
-            .map_err(|e| SandboxError::Setup(format!("create temp profile: {e}")))?;
+            .map_err(|e| ExecutorError::Setup(format!("create temp profile: {e}")))?;
         tmp.write_all(profile.as_bytes())
-            .map_err(|e| SandboxError::Setup(format!("write profile: {e}")))?;
+            .map_err(|e| ExecutorError::Setup(format!("write profile: {e}")))?;
         let profile_path = tmp.into_temp_path();
 
         let mut cmd = tokio::process::Command::new("sandbox-exec");
@@ -39,12 +39,12 @@ impl SandboxExecutor for SeatbeltExecutor {
             command,
         ]);
         cmd.current_dir(work_dir);
-        ozzie_core::conscience::strip_blocked_env(&mut cmd);
+        crate::strip_blocked_env(&mut cmd);
 
         let output = tokio::time::timeout(timeout, cmd.output())
             .await
-            .map_err(|_| SandboxError::Timeout(timeout))?
-            .map_err(|e| SandboxError::Command(e.to_string()))?;
+            .map_err(|_| ExecutorError::Timeout(timeout))?
+            .map_err(|e| ExecutorError::Command(e.to_string()))?;
 
         Ok(output)
     }
@@ -104,7 +104,9 @@ fn generate_profile(perms: &SandboxPermissions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::*;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     #[test]
     fn profile_generation_basic() {

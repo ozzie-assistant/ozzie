@@ -1,7 +1,7 @@
 use std::process::Output;
 use std::time::Duration;
 
-use super::{SandboxError, SandboxExecutor, SandboxPermissions};
+use crate::{ExecutorError, SandboxExecutor, SandboxPermissions};
 
 /// No-op sandbox: runs commands without OS-level isolation.
 /// Used as fallback on unsupported platforms (Windows, old Linux kernels).
@@ -16,16 +16,16 @@ impl SandboxExecutor for NoopExecutor {
         work_dir: &str,
         _permissions: &SandboxPermissions,
         timeout: Duration,
-    ) -> Result<Output, SandboxError> {
+    ) -> Result<Output, ExecutorError> {
         let mut cmd = tokio::process::Command::new("sh");
         cmd.args(["-c", command]);
         cmd.current_dir(work_dir);
-        ozzie_core::conscience::strip_blocked_env(&mut cmd);
+        crate::strip_blocked_env(&mut cmd);
 
         tokio::time::timeout(timeout, cmd.output())
             .await
-            .map_err(|_| SandboxError::Timeout(timeout))?
-            .map_err(|e| SandboxError::Command(e.to_string()))
+            .map_err(|_| ExecutorError::Timeout(timeout))?
+            .map_err(|e| ExecutorError::Command(e.to_string()))
     }
 
     fn backend_name(&self) -> &'static str {

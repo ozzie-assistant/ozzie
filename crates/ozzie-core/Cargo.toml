@@ -11,7 +11,7 @@ ozzie-types = { workspace = true }
 ozzie-llm = { workspace = true }
 worm-profile = { workspace = true }
 worm-layered = { workspace = true }
-worm-sandbox = { workspace = true, features = ["tokio"] }
+worm-sandbox = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }

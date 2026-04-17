@@ -68,7 +68,6 @@ pub fn strip_blocked_env_std(cmd: &mut std::process::Command) {
 }
 
 /// Applies env-var filtering to a [`tokio::process::Command`].
-#[cfg(feature = "tokio")]
 pub fn strip_blocked_env(cmd: &mut tokio::process::Command) {
     for var in BLOCKED_ENV_VARS {
         cmd.env_remove(var);
