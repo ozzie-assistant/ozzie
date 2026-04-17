@@ -59,7 +59,7 @@ impl Scheduler {
     pub fn list_entries(&self) -> Vec<ScheduleEntry> {
         let entries = self.entries.lock().unwrap();
         let mut all: Vec<ScheduleEntry> = entries.values().map(|rt| rt.entry.clone()).collect();
-        all.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        all.sort_by_key(|e| e.created_at);
         all
     }
 

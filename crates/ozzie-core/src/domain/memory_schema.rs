@@ -63,10 +63,8 @@ fn parse(text: &str) -> Option<MemorySchema> {
                         max_page_chars = n;
                     }
                 }
-                "language" => {
-                    if !value.is_empty() {
-                        language = Some(value.to_string());
-                    }
+                "language" if !value.is_empty() => {
+                    language = Some(value.to_string());
                 }
                 _ => {}
             }

@@ -207,10 +207,8 @@ fn render_event(event: Event<'_>, state: &mut RenderState, out: &mut String) {
             };
             let _ = write!(out, "{indent}{bullet}");
         }
-        Event::End(TagEnd::Item) => {
-            if !out.ends_with('\n') {
-                out.push('\n');
-            }
+        Event::End(TagEnd::Item) if !out.ends_with('\n') => {
+            out.push('\n');
         }
         Event::End(TagEnd::Paragraph) => {
             if !out.ends_with('\n') {

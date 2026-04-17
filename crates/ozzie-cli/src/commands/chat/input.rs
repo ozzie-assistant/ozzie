@@ -155,46 +155,40 @@ impl InputState {
             }
 
             // Delete backward: Backspace
-            (KeyCode::Backspace, _) => {
-                if *cursor > 0 {
-                    let prev = buffer[..*cursor]
-                        .char_indices()
-                        .next_back()
-                        .map(|(i, _)| i)
-                        .unwrap_or(0);
-                    buffer.remove(prev);
-                    *cursor = prev;
-                }
+            (KeyCode::Backspace, _) if *cursor > 0 => {
+                let prev = buffer[..*cursor]
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                buffer.remove(prev);
+                *cursor = prev;
             }
 
             // Delete forward: Delete / Ctrl+D (on non-empty)
             (KeyCode::Delete, _)
-            | (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                if *cursor < buffer.len() {
-                    buffer.remove(*cursor);
-                }
+            | (KeyCode::Char('d'), KeyModifiers::CONTROL)
+                if *cursor < buffer.len() =>
+            {
+                buffer.remove(*cursor);
             }
 
             // Move left
-            (KeyCode::Left, _) => {
-                if *cursor > 0 {
-                    *cursor = buffer[..*cursor]
-                        .char_indices()
-                        .next_back()
-                        .map(|(i, _)| i)
-                        .unwrap_or(0);
-                }
+            (KeyCode::Left, _) if *cursor > 0 => {
+                *cursor = buffer[..*cursor]
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
             }
 
             // Move right
-            (KeyCode::Right, _) => {
-                if *cursor < buffer.len() {
-                    *cursor += buffer[*cursor..]
-                        .chars()
-                        .next()
-                        .map(|c| c.len_utf8())
-                        .unwrap_or(0);
-                }
+            (KeyCode::Right, _) if *cursor < buffer.len() => {
+                *cursor += buffer[*cursor..]
+                    .chars()
+                    .next()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(0);
             }
 
             // History: Up
