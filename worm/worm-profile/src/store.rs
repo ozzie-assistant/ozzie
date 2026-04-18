@@ -47,14 +47,14 @@ mod tests {
 
     #[test]
     fn load_nonexistent_returns_none() {
-        let dir = std::env::temp_dir().join("sage_profile_test_nonexistent");
+        let dir = std::env::temp_dir().join("worm_profile_test_nonexistent");
         let result = load(&dir).expect("should not error");
         assert!(result.is_none());
     }
 
     #[test]
     fn save_and_load_roundtrip() {
-        let dir = std::env::temp_dir().join("sage_profile_test_roundtrip");
+        let dir = std::env::temp_dir().join("worm_profile_test_roundtrip");
         std::fs::create_dir_all(&dir).ok();
         let profile = UserProfile::new("Alice".into(), vec!["loves Rust".into()]);
 

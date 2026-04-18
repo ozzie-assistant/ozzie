@@ -10,12 +10,14 @@ use tracing::debug;
 /// from the media type (e.g. `png`, `jpeg`, `webp`).
 pub struct FsBlobStore {
     blobs_dir: PathBuf,
+    dir_created: std::sync::Once,
 }
 
 impl FsBlobStore {
     pub fn new(root: impl AsRef<Path>) -> Self {
         Self {
             blobs_dir: root.as_ref().join("blobs"),
+            dir_created: std::sync::Once::new(),
         }
     }
 
@@ -37,14 +39,16 @@ impl BlobStore for FsBlobStore {
         };
 
         let path = self.blob_path(&blob);
-        if path.exists() {
+        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
             debug!(hash = %blob.hash, "blob already exists, deduplicating");
             return Ok(blob);
         }
 
-        tokio::fs::create_dir_all(&self.blobs_dir)
-            .await
-            .map_err(|e| BlobError::Io(e.to_string()))?;
+        // Ensure blobs dir exists (once per lifetime).
+        let dir = self.blobs_dir.clone();
+        self.dir_created.call_once(|| {
+            let _ = std::fs::create_dir_all(&dir);
+        });
 
         tokio::fs::write(&path, bytes)
             .await
@@ -62,7 +66,9 @@ impl BlobStore for FsBlobStore {
     }
 
     async fn exists(&self, blob: &BlobRef) -> bool {
-        self.blob_path(blob).exists()
+        tokio::fs::try_exists(self.blob_path(blob))
+            .await
+            .unwrap_or(false)
     }
 }
 

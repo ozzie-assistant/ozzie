@@ -42,7 +42,6 @@ impl Driver {
         }
     }
 
-    /// Human-readable label for UI display.
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::Anthropic => "Anthropic (Claude)",

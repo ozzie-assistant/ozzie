@@ -31,7 +31,6 @@ impl Content {
         }
     }
 
-    /// Returns the text content if this is a `Text` part, or `None`.
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text { text } => Some(text),
@@ -39,7 +38,6 @@ impl Content {
         }
     }
 
-    /// Returns true if this is an image.
     pub fn is_image(&self) -> bool {
         matches!(self, Self::Image { .. })
     }

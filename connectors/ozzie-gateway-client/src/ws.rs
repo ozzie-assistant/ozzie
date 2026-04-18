@@ -34,6 +34,7 @@ const METHOD_OPEN_SESSION: &str = "open_session";
 const METHOD_SEND_CONNECTOR_MESSAGE: &str = "send_connector_message";
 const METHOD_PROMPT_RESPONSE: &str = "prompt_response";
 const METHOD_ACCEPT_ALL_TOOLS: &str = "accept_all_tools";
+const MAX_NOTIFICATION_BUFFER: usize = 1024;
 
 /// WebSocket-backed gateway client.
 ///
@@ -108,7 +109,9 @@ impl WsGatewayClient {
             }
 
             // Not our response — must be a notification, buffer it.
-            if let Some(method) = frame.method {
+            if let Some(method) = frame.method
+                && self.notification_buffer.len() < MAX_NOTIFICATION_BUFFER
+            {
                 let params = frame.params.unwrap_or(serde_json::Value::Null);
                 self.notification_buffer
                     .push_back(parse_notification(&method, params));
