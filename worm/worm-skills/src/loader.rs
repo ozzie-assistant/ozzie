@@ -3,7 +3,7 @@ use std::path::Path;
 
 use tracing::{debug, warn};
 
-use super::types::{SkillMD, TriggersDef};
+use crate::types::{SkillMD, TriggersDef};
 
 /// Loads all skills from `$OZZIE_PATH/skills/*/SKILL.md`.
 /// Returns an empty vec if the directory doesn't exist.

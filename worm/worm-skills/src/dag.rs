@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use super::types::StepDef;
+use crate::types::StepDef;
 
 /// Directed Acyclic Graph for workflow step execution.
 ///

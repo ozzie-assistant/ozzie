@@ -8,8 +8,7 @@ use crate::domain::{
 };
 use crate::events::EventBus;
 
-use super::dag::DAG;
-use super::types::{SkillMD, StepDef, VarDef};
+use worm_skills::{DAG, SkillMD, StepDef, VarDef};
 
 /// Configuration for running skills.
 pub struct RunnerConfig {

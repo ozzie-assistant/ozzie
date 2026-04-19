@@ -1990,6 +1990,7 @@ dependencies = [
  "worm-layered",
  "worm-profile",
  "worm-sandbox",
+ "worm-skills",
 ]
 
 [[package]]
@@ -4565,6 +4566,18 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "worm-skills"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
  "tracing",
 ]
 

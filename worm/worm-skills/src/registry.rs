@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::types::{SkillMD, SkillSource};
+use crate::types::{SkillMD, SkillSource};
 
 /// Manages loaded skills by name.
 pub struct SkillRegistry {
