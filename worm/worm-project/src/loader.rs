@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tracing::{debug, warn};
 
-use super::types::ProjectManifest;
+use crate::types::ProjectManifest;
 
 const PROJECT_YAML: &str = ".ozzie/project.yaml";
 const OZZIE_MD: &str = ".ozzie/ozzie.md";

@@ -1982,13 +1982,13 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
- "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "worm-layered",
  "worm-profile",
+ "worm-project",
  "worm-sandbox",
  "worm-skills",
 ]
@@ -4551,6 +4551,18 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "worm-project"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

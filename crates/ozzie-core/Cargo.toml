@@ -13,6 +13,7 @@ worm-profile = { workspace = true }
 worm-layered = { workspace = true }
 worm-sandbox = { workspace = true }
 worm-skills = { workspace = true }
+worm-project = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
@@ -23,7 +24,6 @@ async-trait = { workspace = true }
 rand = { workspace = true }
 hex = "0.4"
 chrono = { workspace = true }
-serde_yaml = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

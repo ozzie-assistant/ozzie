@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::types::ProjectManifest;
+use crate::types::ProjectManifest;
 
 /// Manages discovered projects by name.
 pub struct ProjectRegistry {
