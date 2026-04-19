@@ -1,7 +1,4 @@
-//! File-backed typed configuration storage.
-//!
-//! [`FileStorage`] implements [`ConfigStore`] from `ozzie-core` using
-//! a JSON file with read-write locking.
+//! Typed configuration storage — trait + file-backed implementation.
 
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -10,12 +7,25 @@ use std::sync::RwLock;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use ozzie_core::storage::{ConfigStore, StorageError};
+/// Error type for storage operations.
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("lock poisoned")]
+    Poisoned,
+}
+
+/// Trait for typed persistent stores.
+pub trait ConfigStore<T>: Send + Sync {
+    fn read(&self) -> Result<T, StorageError>;
+    fn patch(&self, f: Box<dyn FnOnce(T) -> T + Send>) -> Result<T, StorageError>;
+    fn save(&self, value: T) -> Result<(), StorageError>;
+}
 
 /// File-backed JSON store with read-write locking.
-///
-/// - [`read`](ConfigStore::read) returns `T::default()` if the file does not exist yet.
-/// - [`patch`](ConfigStore::patch) and [`save`](ConfigStore::save) create parent directories as needed.
 pub struct FileStorage<T> {
     path: PathBuf,
     lock: RwLock<()>,
@@ -23,9 +33,6 @@ pub struct FileStorage<T> {
 }
 
 impl<T> FileStorage<T> {
-    /// Creates a store backed by `path`.
-    ///
-    /// The file is not created until the first write.
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
@@ -34,7 +41,6 @@ impl<T> FileStorage<T> {
         }
     }
 
-    /// Returns the backing file path.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -72,10 +78,6 @@ where
     }
 }
 
-/// Serializes `value` as pretty JSON and writes it to `path`.
-///
-/// Creates parent directories if needed. Does not hold any lock — callers are
-/// responsible for holding the write guard before calling.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StorageError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
