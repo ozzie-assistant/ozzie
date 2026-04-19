@@ -22,7 +22,7 @@ pub async fn run<C: InputCollector>(
 
     // ── Language ───────────────────────────────────────────────────────
     let existing_lang = if config_exists {
-        ozzie_core::config::load(&config_path)
+        crate::config_loader::load(&config_path)
             .ok()
             .and_then(|c| c.agent.preferred_language)
             .unwrap_or_else(i18n::detect)

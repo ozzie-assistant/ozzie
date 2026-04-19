@@ -22,8 +22,6 @@ async-trait = { workspace = true }
 rand = { workspace = true }
 hex = "0.4"
 chrono = { workspace = true }
-regex = { workspace = true }
-brush-parser = "0.3.0"
 serde_yaml = { workspace = true }
 
 [dev-dependencies]

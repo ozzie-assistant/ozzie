@@ -2,7 +2,6 @@ use std::io::{self, BufRead, Write as IoWrite};
 use std::path::Path;
 use std::sync::Arc;
 
-use ozzie_core::config;
 use ozzie_core::profile::{self, UserProfile};
 use ozzie_core::prompt::load_persona;
 use ozzie_llm::{ChatMessage, ChatRole, Provider};
@@ -20,7 +19,7 @@ pub async fn run(ozzie_path: &Path, language: Option<&str>) -> anyhow::Result<()
 
     // Load config and build provider
     let config_path = ozzie_path.join("config.jsonc");
-    let cfg = config::load(&config_path)
+    let cfg = crate::config_loader::load(&config_path)
         .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
 
     let default_name = &cfg.models.default;

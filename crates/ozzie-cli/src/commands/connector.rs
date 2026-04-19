@@ -231,7 +231,7 @@ async fn list() -> anyhow::Result<()> {
 
     let config_path = config_path();
     let cfg = if config_path.exists() {
-        config::load_partial::<config::Config>(&config_path).unwrap_or_default()
+        crate::config_loader::load_partial::<config::Config>(&config_path).unwrap_or_default()
     } else {
         config::Config::default()
     };
@@ -257,7 +257,7 @@ async fn list() -> anyhow::Result<()> {
 /// `ConnectorProcessConfig` format, and writes back as formatted JSON.
 fn patch_config_discord(config_path: &std::path::Path) -> anyhow::Result<()> {
     let mut cfg: serde_json::Value = if config_path.exists() {
-        config::load_partial::<serde_json::Value>(config_path).unwrap_or(serde_json::json!({}))
+        crate::config_loader::load_partial::<serde_json::Value>(config_path).unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };

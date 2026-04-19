@@ -282,13 +282,13 @@ fn load_config() -> config::Config {
     let config_path = config_path();
     if config_path.exists() {
         let store = secrets::SecretStore::global();
-        let opts = config::LoadOptions {
+        let opts = crate::config_loader::LoadOptions {
             resolver: Some(Box::new(move |var_name: &str| {
                 store.resolve_template_var(var_name)
             })),
             ..Default::default()
         };
-        config::load_with_options(&config_path, opts).unwrap_or_else(|e| {
+        crate::config_loader::load_with_options(&config_path, opts).unwrap_or_else(|e| {
             tracing::warn!(error = %e, "failed to load config, using defaults");
             config::Config::default()
         })

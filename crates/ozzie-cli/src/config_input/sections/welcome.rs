@@ -32,7 +32,7 @@ impl WelcomeSection {
         if !self.config_exists {
             return None;
         }
-        config::load(Path::new(&self.config_path)).ok()
+        crate::config_loader::load(Path::new(&self.config_path)).ok()
     }
 
     fn existing_sections(cfg: &config::Config) -> Vec<SectionId> {

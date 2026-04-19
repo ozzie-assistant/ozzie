@@ -1,5 +1,6 @@
 mod commands;
 pub(crate) mod config_input;
+pub(crate) mod config_loader;
 mod crypt;
 mod output;
 mod provider_factory;

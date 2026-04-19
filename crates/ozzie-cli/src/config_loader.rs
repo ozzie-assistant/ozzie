@@ -2,7 +2,7 @@ use std::path::Path;
 
 use regex::Regex;
 
-use super::types::Config;
+use ozzie_core::config::Config;
 
 /// Function type for decrypting `ENC[age:...]` values.
 pub type DecryptFn = Box<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
