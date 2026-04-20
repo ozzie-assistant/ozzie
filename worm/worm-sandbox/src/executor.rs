@@ -94,7 +94,13 @@ pub fn create_sandbox() -> Box<dyn SandboxExecutor> {
         }
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    {
+        tracing::info!("using Windows regex-based sandbox");
+        Box::new(super::windows::WindowsExecutor::new())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         tracing::warn!("no OS sandbox available on this platform");
         Box::new(super::noop::NoopExecutor)
