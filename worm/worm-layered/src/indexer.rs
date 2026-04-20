@@ -1,29 +1,58 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::message::Message;
 use crate::keywords::extract_keywords;
+use crate::message::Message;
 use crate::store::ArchiveStore;
 use crate::types::{
     ArchivePayload, Config, Index, Node, NodeMetadata, NodeTokenEstimate, Root,
 };
 use crate::{estimate_tokens, trim_to_tokens};
 
-/// Function signature for summarization: (text, target_tokens) → summary.
-/// This is the heuristic fallback; LLM-based summarizers can also implement this.
-pub type SummarizerFn = Box<dyn Fn(&str, usize) -> String + Send + Sync>;
+/// Errors from summarizer operations.
+#[derive(Debug, thiserror::Error)]
+pub enum SummarizerError {
+    #[error("LLM call failed: {0}")]
+    Llm(String),
+    #[error("{0}")]
+    Other(String),
+}
+
+/// Async summarizer port for the layered context pipeline.
+///
+/// Implementations produce a shorter version of `text` within `target_tokens`.
+/// The heuristic [`FallbackSummarizer`] works without an LLM; plug in an
+/// LLM-backed implementation for higher quality.
+#[async_trait::async_trait]
+pub trait Summarizer: Send + Sync {
+    async fn summarize(&self, text: &str, target_tokens: usize) -> Result<String, SummarizerError>;
+}
+
+/// Heuristic summarizer — no LLM required.
+///
+/// - Small budgets (≤ 150 tokens, L0): first 2 sentences.
+/// - Larger budgets (L1): first 18 non-empty lines as bullet list.
+pub struct FallbackSummarizer;
+
+#[async_trait::async_trait]
+impl Summarizer for FallbackSummarizer {
+    async fn summarize(&self, text: &str, target_tokens: usize) -> Result<String, SummarizerError> {
+        Ok(fallback_summarize(text, target_tokens))
+    }
+}
 
 /// Builds and incrementally updates the layered index for a session.
 pub struct Indexer {
     store: Box<dyn ArchiveStore>,
-    summarizer: SummarizerFn,
+    summarizer: Arc<dyn Summarizer>,
     cfg: Config,
 }
 
 impl Indexer {
-    pub fn new(store: Box<dyn ArchiveStore>, summarizer: SummarizerFn, cfg: Config) -> Self {
+    pub fn new(store: Box<dyn ArchiveStore>, summarizer: Arc<dyn Summarizer>, cfg: Config) -> Self {
         Self {
             store,
             summarizer,
@@ -32,12 +61,16 @@ impl Indexer {
     }
 
     /// Builds or incrementally updates the index for a session.
-    pub fn build_or_update(
+    pub async fn build_or_update(
         &self,
         session_id: &str,
         archived: &[Message],
     ) -> Result<Index, IndexerError> {
-        let existing = self.store.load_index(session_id).map_err(IndexerError::Store)?;
+        let existing = self
+            .store
+            .load_index(session_id)
+            .await
+            .map_err(IndexerError::Store)?;
 
         // Build checksum cache from existing nodes
         let checksum_cache: HashMap<String, &Node> = existing
@@ -71,8 +104,16 @@ impl Indexer {
             }
 
             // Cache miss — generate summaries
-            let summary = (self.summarizer)(&transcript, self.cfg.l1_target_tokens);
-            let abstract_text = (self.summarizer)(&summary, self.cfg.l0_target_tokens);
+            let summary = self
+                .summarizer
+                .summarize(&transcript, self.cfg.l1_target_tokens)
+                .await
+                ?;
+            let abstract_text = self
+                .summarizer
+                .summarize(&summary, self.cfg.l0_target_tokens)
+                .await
+                ?;
             let keywords = extract_keywords(&transcript, 10);
 
             let node_id_len = 12.min(checksum.len());
@@ -108,6 +149,7 @@ impl Indexer {
                         transcript,
                     },
                 )
+                .await
                 .map_err(IndexerError::Store)?;
         }
 
@@ -117,7 +159,7 @@ impl Indexer {
         }
 
         // Build root
-        let root = self.build_root(&nodes);
+        let root = self.build_root(&nodes).await?;
 
         // Build index
         let index = Index {
@@ -135,11 +177,12 @@ impl Indexer {
         // Persist
         self.store
             .save_index(session_id, &index)
+            .await
             .map_err(IndexerError::Store)?;
 
         // Cleanup orphaned archives
         let valid_ids: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
-        let _ = self.store.cleanup_archives(session_id, &valid_ids);
+        let _ = self.store.cleanup_archives(session_id, &valid_ids).await;
 
         Ok(index)
     }
@@ -149,7 +192,7 @@ impl Indexer {
         &*self.store
     }
 
-    fn build_root(&self, nodes: &[Node]) -> Root {
+    async fn build_root(&self, nodes: &[Node]) -> Result<Root, IndexerError> {
         let mut all_abstracts = String::new();
         let child_ids: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
 
@@ -158,17 +201,25 @@ impl Indexer {
             all_abstracts.push('\n');
         }
 
-        let summary = (self.summarizer)(&all_abstracts, self.cfg.l1_target_tokens);
-        let abstract_text = (self.summarizer)(&summary, self.cfg.l0_target_tokens);
+        let summary = self
+            .summarizer
+            .summarize(&all_abstracts, self.cfg.l1_target_tokens)
+            .await
+            ?;
+        let abstract_text = self
+            .summarizer
+            .summarize(&summary, self.cfg.l0_target_tokens)
+            .await
+            ?;
         let keywords = extract_keywords(&all_abstracts, 15);
 
-        Root {
+        Ok(Root {
             id: "root".to_string(),
             abstract_text,
             summary,
             keywords,
             child_ids,
-        }
+        })
     }
 }
 
@@ -199,11 +250,11 @@ fn compute_checksum(transcript: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Heuristic fallback summarizer (no LLM required).
+/// Heuristic fallback summarization (no LLM required).
 ///
-/// - For small budgets (≤ 150 tokens, L0): first 2 sentences.
-/// - For larger budgets (L1): first 18 non-empty lines as bullet list.
-pub fn fallback_summarizer(text: &str, target_tokens: usize) -> String {
+/// Prefer [`FallbackSummarizer`] for use with the [`Indexer`].
+/// This free function is kept for standalone usage.
+pub fn fallback_summarize(text: &str, target_tokens: usize) -> String {
     let non_empty: Vec<&str> = text
         .lines()
         .map(|l| l.trim())
@@ -255,6 +306,8 @@ fn split_sentences(text: &str) -> Vec<String> {
 pub enum IndexerError {
     #[error("store: {0}")]
     Store(#[from] crate::store::StoreError),
+    #[error("summarizer: {0}")]
+    Summarizer(#[from] SummarizerError),
 }
 
 #[cfg(test)]
@@ -283,9 +336,9 @@ mod tests {
     }
 
     #[test]
-    fn fallback_summarizer_l0() {
+    fn fallback_summarize_l0() {
         let text = "First sentence. Second sentence. Third sentence. Fourth sentence.";
-        let result = fallback_summarizer(text, 100);
+        let result = fallback_summarize(text, 100);
         assert!(result.contains("First sentence."));
         assert!(result.contains("Second sentence."));
         // Should NOT contain third sentence (L0 = 2 sentences max)
@@ -293,9 +346,9 @@ mod tests {
     }
 
     #[test]
-    fn fallback_summarizer_l1() {
+    fn fallback_summarize_l1() {
         let text = "Line one\nLine two\nLine three\n\nLine five";
-        let result = fallback_summarizer(text, 500);
+        let result = fallback_summarize(text, 500);
         assert!(result.contains("- Line one"));
         assert!(result.contains("- Line two"));
         assert!(result.contains("- Line three"));

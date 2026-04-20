@@ -8,6 +8,7 @@ use tracing::{debug, error, info, warn};
 
 use ozzie_core::domain::{DreamRecord, DreamStats, MemorySchema, Message, PageStore};
 use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
+use ozzie_core::profile::ProfileRepository;
 use ozzie_llm::Provider;
 use ozzie_memory::{ImportanceLevel, MemoryEntry, MemoryType, Store};
 
@@ -282,7 +283,7 @@ impl DreamRunner {
                         // Save profile entries
                         if !result.extraction.profile.is_empty() {
                             if let Err(e) =
-                                self.save_profile_entries(&result.extraction.profile)
+                                self.save_profile_entries(&result.extraction.profile).await
                             {
                                 error!(error = %e, "workspace: failed to save profile entries");
                             } else {
@@ -417,7 +418,7 @@ impl DreamRunner {
 
         // Save profile entries
         if !extraction.profile.is_empty() {
-            if let Err(e) = self.save_profile_entries(&extraction.profile) {
+            if let Err(e) = self.save_profile_entries(&extraction.profile).await {
                 error!(error = %e, "dream: failed to save profile entries");
                 // Continue — still save memories
             } else {
@@ -473,8 +474,11 @@ impl DreamRunner {
         Ok(Some(record))
     }
 
-    fn save_profile_entries(&self, entries: &[String]) -> anyhow::Result<()> {
-        let mut profile = ozzie_core::profile::load(&self.ozzie_path)
+    async fn save_profile_entries(&self, entries: &[String]) -> anyhow::Result<()> {
+        let repo = ozzie_core::profile::FsProfileRepository::new(&self.ozzie_path);
+        let mut profile = repo
+            .load()
+            .await
             .map_err(|e| anyhow::anyhow!(e))?
             .ok_or_else(|| anyhow::anyhow!("no profile found"))?;
 
@@ -482,7 +486,8 @@ impl DreamRunner {
             profile.add_observation(entry.clone());
         }
 
-        ozzie_core::profile::save(&self.ozzie_path, &profile)
+        repo.save(&profile)
+            .await
             .map_err(|e| anyhow::anyhow!(e))
     }
 }

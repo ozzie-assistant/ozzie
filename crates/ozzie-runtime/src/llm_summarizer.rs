@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ozzie_core::layered::SummarizerFn;
+use ozzie_core::layered::{fallback_summarize, Summarizer, SummarizerError};
 use ozzie_llm::Provider;
 
 const SUMMARIZE_PROMPT_TEMPLATE: &str = r#"Summarize the following conversation excerpt concisely.
@@ -13,75 +13,52 @@ Output ONLY the summary, no preamble.
 {text}
 ---"#;
 
-/// Creates an LLM-backed summarizer function for the layered context system.
+/// LLM-backed summarizer for the layered context system.
 ///
-/// Uses `block_on` internally because the indexer pipeline is synchronous.
-/// This is safe because the indexer runs inside a `tokio::spawn` context
-/// where `block_on` on a new runtime is acceptable.
-pub fn llm_summarizer(provider: Arc<dyn Provider>) -> SummarizerFn {
-    Box::new(move |text: &str, target_tokens: usize| {
+/// Falls back to the heuristic summarizer for very short texts (< 200 chars)
+/// or on LLM failure.
+pub struct LlmSummarizer {
+    provider: Arc<dyn Provider>,
+}
+
+impl LlmSummarizer {
+    pub fn new(provider: Arc<dyn Provider>) -> Self {
+        Self { provider }
+    }
+}
+
+#[async_trait::async_trait]
+impl Summarizer for LlmSummarizer {
+    async fn summarize(&self, text: &str, target_tokens: usize) -> Result<String, SummarizerError> {
         // Skip LLM for very short texts — not worth the call
         if text.len() < 200 {
-            return ozzie_core::layered::fallback_summarizer(text, target_tokens);
+            return Ok(fallback_summarize(text, target_tokens));
         }
 
         let prompt = SUMMARIZE_PROMPT_TEMPLATE
             .replace("{target}", &target_tokens.to_string())
             .replace("{text}", text);
 
-        let provider = provider.clone();
+        let messages =
+            vec![ozzie_llm::ChatMessage::text(ozzie_llm::ChatRole::User, &prompt)];
 
-        // Use a separate tokio runtime for the blocking LLM call.
-        // We can't use Handle::block_on because the indexer may be called
-        // from within a tokio context where blocking is not allowed.
-        let rt = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt,
-            Err(_) => {
-                tracing::warn!("failed to create runtime for LLM summarizer, using fallback");
-                return ozzie_core::layered::fallback_summarizer(text, target_tokens);
-            }
-        };
-
-        match rt.block_on(call_llm(&provider, &prompt)) {
-            Ok(summary) => {
-                let trimmed = ozzie_core::layered::trim_to_tokens(&summary, target_tokens);
-                trimmed.to_string()
+        match self.provider.chat(&messages, &[]).await {
+            Ok(response) => {
+                let trimmed =
+                    ozzie_core::layered::trim_to_tokens(&response.content, target_tokens);
+                Ok(trimmed.to_string())
             }
             Err(e) => {
                 tracing::warn!(error = %e, "LLM summarizer failed, using fallback");
-                ozzie_core::layered::fallback_summarizer(text, target_tokens)
+                Ok(fallback_summarize(text, target_tokens))
             }
         }
-    })
-}
-
-async fn call_llm(
-    provider: &Arc<dyn Provider>,
-    prompt: &str,
-) -> Result<String, ozzie_llm::LlmError> {
-    let messages = vec![ozzie_llm::ChatMessage::text(ozzie_llm::ChatRole::User, prompt)];
-
-    let response = provider.chat(&messages, &[]).await?;
-    Ok(response.content)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn short_text_uses_fallback() {
-        // Mock provider — won't be called for short text
-        let provider = Arc::new(MockProvider);
-        let summarizer = llm_summarizer(provider);
-
-        let result = summarizer("short text", 100);
-        // Should use fallback (text < 200 chars)
-        assert!(!result.is_empty());
-    }
 
     struct MockProvider;
 
@@ -127,13 +104,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn long_text_calls_llm() {
-        let provider = Arc::new(MockProvider);
-        let summarizer = llm_summarizer(provider);
+    #[tokio::test]
+    async fn short_text_uses_fallback() {
+        let summarizer = LlmSummarizer::new(Arc::new(MockProvider));
+        let result = summarizer.summarize("short text", 100).await.unwrap();
+        // Should use fallback (text < 200 chars)
+        assert!(!result.is_empty());
+    }
 
+    #[tokio::test]
+    async fn long_text_calls_llm() {
+        let summarizer = LlmSummarizer::new(Arc::new(MockProvider));
         let long_text = "This is a detailed conversation about Rust programming. ".repeat(20);
-        let result = summarizer(&long_text, 200);
+        let result = summarizer.summarize(&long_text, 200).await.unwrap();
         assert_eq!(result, "Mock summary of the conversation.");
     }
 }

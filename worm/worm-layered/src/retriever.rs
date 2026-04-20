@@ -23,7 +23,7 @@ impl<'a> Retriever<'a> {
     }
 
     /// Retrieves the most relevant archived context for the given query.
-    pub fn retrieve(
+    pub async fn retrieve(
         &self,
         session_id: &str,
         index: &Index,
@@ -171,7 +171,7 @@ impl<'a> Retriever<'a> {
         for sn in l1_scored.iter().take(top_l2) {
             let node = &index.nodes[sn.index];
 
-            match self.store.read_archive(session_id, &node.id) {
+            match self.store.read_archive(session_id, &node.id).await {
                 Ok(Some(archive)) => {
                     let tokens = estimate_tokens(&archive.transcript);
                     if used_tokens + tokens <= budget {

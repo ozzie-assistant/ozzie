@@ -11,7 +11,7 @@ Part of the [worm](https://github.com/ozzie-assistant/ozzie) family -- named aft
 - **Confidence gating** -- retrieval escalates from L0 to L1 to L2 only when confidence is below threshold
 - **Recency prior** -- recent archive nodes get a scoring bonus
 - **Budget-aware selection** -- respects a token budget (45% of prompt by default)
-- **Pluggable summarizer** -- bring your own LLM via `SummarizerFn`
+- **Pluggable summarizer** -- bring your own LLM via the `Summarizer` trait
 - **Pluggable storage** -- implement `ArchiveStore` for your persistence backend
 - **Token utilities** -- `estimate_tokens()`, `chunk_messages()`, `extract_keywords()`
 
@@ -45,8 +45,8 @@ let config = Config {
     ..Config::default()
 };
 
-// Provide a summarizer function and an archive store
-let summarizer = Box::new(worm_layered::fallback_summarizer); // heuristic, no LLM
+// Provide a summarizer and an archive store
+let summarizer = Arc::new(worm_layered::FallbackSummarizer); // heuristic, no LLM
 let store: Box<dyn ArchiveStore> = /* your store */;
 let manager = Manager::new(store, config, summarizer);
 

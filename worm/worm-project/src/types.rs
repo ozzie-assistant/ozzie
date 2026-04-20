@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Loaded project manifest (from `.ozzie/project.yaml` + `.ozzie/ozzie.md`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectManifest {
     pub name: String,
     #[serde(default)]

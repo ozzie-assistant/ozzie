@@ -1,7 +1,9 @@
 use std::fmt::Write;
 
+use std::sync::Arc;
+
+use crate::indexer::{Indexer, Summarizer};
 use crate::message::{Message, ROLE_ASSISTANT, ROLE_USER};
-use crate::indexer::{Indexer, SummarizerFn};
 use crate::retriever::Retriever;
 use crate::store::ArchiveStore;
 use crate::types::{ApplyResult, Config, RetrievalResult, Selection};
@@ -15,7 +17,7 @@ pub struct Manager {
 
 impl Manager {
     /// Creates a Manager with the given store, config, and summarizer.
-    pub fn new(store: Box<dyn ArchiveStore>, cfg: Config, summarizer: SummarizerFn) -> Self {
+    pub fn new(store: Box<dyn ArchiveStore>, cfg: Config, summarizer: Arc<dyn Summarizer>) -> Self {
         Self {
             indexer: Indexer::new(store, summarizer, cfg.clone()),
             cfg,
@@ -32,7 +34,7 @@ impl Manager {
     /// 2. Builds/updates the index from archived messages
     /// 3. Retrieves relevant context via BM25 scoring
     /// 4. Returns `[context_message, ...recent_messages]`
-    pub fn apply(
+    pub async fn apply(
         &self,
         session_id: &str,
         history: &[Message],
@@ -51,6 +53,7 @@ impl Manager {
         let index = self
             .indexer
             .build_or_update(session_id, archived)
+            .await
             .map_err(ManagerError::Indexer)?;
 
         // Extract query from the last user message
@@ -58,7 +61,8 @@ impl Manager {
 
         // Retrieve relevant context
         let result = Retriever::new(self.indexer.store(), self.cfg.clone())
-            .retrieve(session_id, &index, &query);
+            .retrieve(session_id, &index, &query)
+            .await;
 
         // Build the layered context message
         let context_msg = build_context_message(&result);

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::{Args, Subcommand};
 use ozzie_utils::config::{logs_path, skills_path};
-use ozzie_core::skills::{self, SkillMD, TriggersDef};
+use ozzie_core::skills::{FsSkillRepository, SkillMD, SkillRepository, TriggersDef};
 
 use crate::output;
 
@@ -38,7 +38,7 @@ pub async fn run(args: ScheduleArgs) -> anyhow::Result<()> {
 
 async fn list_triggers(json: bool) -> anyhow::Result<()> {
     let skills_dir = skills_path();
-    let skills = load_skills_with_triggers(&skills_dir)?;
+    let skills = load_skills_with_triggers(&skills_dir).await?;
 
     if json {
         return output::print_json(&skills);
@@ -128,8 +128,8 @@ async fn show_history(limit: usize, json: bool) -> anyhow::Result<()> {
 }
 
 /// Loads all SKILL.md files that have triggers defined.
-fn load_skills_with_triggers(skills_dir: &Path) -> anyhow::Result<Vec<(SkillMD, TriggersDef)>> {
-    let all_skills = skills::load_skills_dir(skills_dir);
+async fn load_skills_with_triggers(skills_dir: &Path) -> anyhow::Result<Vec<(SkillMD, TriggersDef)>> {
+    let all_skills = FsSkillRepository::new(skills_dir).load_all().await;
     let results: Vec<(SkillMD, TriggersDef)> = all_skills
         .into_iter()
         .filter_map(|skill| {
@@ -167,28 +167,29 @@ fn read_scheduler_logs(
 mod tests {
     use super::*;
 
-    #[test]
-    fn parse_empty_skills_dir() {
+    #[tokio::test]
+    async fn parse_empty_skills_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let result = load_skills_with_triggers(dir.path()).unwrap();
+        let result = load_skills_with_triggers(dir.path()).await.unwrap();
         assert!(result.is_empty());
     }
 
-    #[test]
-    fn parse_skill_md_no_frontmatter() {
+    #[tokio::test]
+    async fn parse_skill_md_no_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let skill_dir = dir.path().join("my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\nDoes things.").unwrap();
 
-        let skill = skills::parse_skill_md(&skill_dir.join("SKILL.md")).unwrap();
+        let repo = FsSkillRepository::new(&skill_dir);
+        let skill = repo.load_one(&skill_dir.join("SKILL.md")).await.unwrap();
         assert_eq!(skill.name, "my-skill");
         assert_eq!(skill.description, "My Skill");
         assert!(skill.triggers.is_none());
     }
 
-    #[test]
-    fn parse_skill_md_with_frontmatter() {
+    #[tokio::test]
+    async fn parse_skill_md_with_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let skill_dir = dir.path().join("deploy");
         std::fs::create_dir_all(&skill_dir).unwrap();
@@ -201,7 +202,8 @@ description: Deploy to production
 Steps here."#;
         std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
 
-        let skill = skills::parse_skill_md(&skill_dir.join("SKILL.md")).unwrap();
+        let repo = FsSkillRepository::new(&skill_dir);
+        let skill = repo.load_one(&skill_dir.join("SKILL.md")).await.unwrap();
         assert_eq!(skill.name, "deploy");
         assert_eq!(skill.description, "Deploy to production");
         assert_eq!(skill.body, "# Deploy\n\nSteps here.");

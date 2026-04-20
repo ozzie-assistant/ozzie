@@ -8,17 +8,22 @@ const PROJECT_YAML: &str = ".ozzie/project.yaml";
 const OZZIE_MD: &str = ".ozzie/ozzie.md";
 
 /// Discovers projects under `workspaces_root` by scanning `*/.ozzie/project.yaml`.
-pub fn discover_projects(workspaces_root: &Path, extra_paths: &[String]) -> Vec<ProjectManifest> {
+pub(crate) async fn discover_projects(workspaces_root: &Path, extra_paths: &[String]) -> Vec<ProjectManifest> {
     let mut projects = Vec::new();
 
     // Scan workspaces_root children
     if workspaces_root.exists() {
-        match std::fs::read_dir(workspaces_root) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
+        match tokio::fs::read_dir(workspaces_root).await {
+            Ok(mut entries) => {
+                while let Ok(Some(entry)) = entries.next_entry().await {
                     let path = entry.path();
-                    if path.is_dir() {
-                        try_load_project(&path, &mut projects);
+                    let is_dir = entry
+                        .file_type()
+                        .await
+                        .map(|t| t.is_dir())
+                        .unwrap_or(false);
+                    if is_dir {
+                        try_load_project(&path, &mut projects).await;
                     }
                 }
             }
@@ -34,7 +39,7 @@ pub fn discover_projects(workspaces_root: &Path, extra_paths: &[String]) -> Vec<
     for extra in extra_paths {
         let path = expand_tilde(extra);
         if path.is_dir() {
-            try_load_project(&path, &mut projects);
+            try_load_project(&path, &mut projects).await;
         } else {
             warn!(path = %path.display(), "extra project path not found");
         }
@@ -45,12 +50,12 @@ pub fn discover_projects(workspaces_root: &Path, extra_paths: &[String]) -> Vec<
     projects
 }
 
-fn try_load_project(dir: &Path, projects: &mut Vec<ProjectManifest>) {
+async fn try_load_project(dir: &Path, projects: &mut Vec<ProjectManifest>) {
     let yaml_file = dir.join(PROJECT_YAML);
     if !yaml_file.exists() {
         return;
     }
-    match load_project(dir) {
+    match load_project(dir).await {
         Ok(manifest) => {
             debug!(name = %manifest.name, path = %dir.display(), "loaded project");
             projects.push(manifest);
@@ -62,9 +67,10 @@ fn try_load_project(dir: &Path, projects: &mut Vec<ProjectManifest>) {
 }
 
 /// Loads a project from a directory containing `.ozzie/project.yaml`.
-pub fn load_project(project_root: &Path) -> Result<ProjectManifest, ProjectLoadError> {
+pub(crate) async fn load_project(project_root: &Path) -> Result<ProjectManifest, ProjectLoadError> {
     let yaml_path = project_root.join(PROJECT_YAML);
-    let yaml_content = std::fs::read_to_string(&yaml_path)
+    let yaml_content = tokio::fs::read_to_string(&yaml_path)
+        .await
         .map_err(|e| ProjectLoadError::Io(e.to_string()))?;
 
     let mut manifest: ProjectManifest =
@@ -89,7 +95,8 @@ pub fn load_project(project_root: &Path) -> Result<ProjectManifest, ProjectLoadE
     // Load instructions from ozzie.md (optional)
     let md_path = project_root.join(OZZIE_MD);
     if md_path.exists() {
-        manifest.instructions = std::fs::read_to_string(&md_path)
+        manifest.instructions = tokio::fs::read_to_string(&md_path)
+            .await
             .map_err(|e| ProjectLoadError::Io(e.to_string()))?;
     }
 
@@ -118,21 +125,21 @@ fn expand_tilde(path: &str) -> PathBuf {
 mod tests {
     use super::*;
 
-    #[test]
-    fn discover_empty_dir() {
+    #[tokio::test]
+    async fn discover_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let projects = discover_projects(dir.path(), &[]);
+        let projects = discover_projects(dir.path(), &[]).await;
         assert!(projects.is_empty());
     }
 
-    #[test]
-    fn discover_nonexistent_dir() {
-        let projects = discover_projects(Path::new("/nonexistent"), &[]);
+    #[tokio::test]
+    async fn discover_nonexistent_dir() {
+        let projects = discover_projects(Path::new("/nonexistent"), &[]).await;
         assert!(projects.is_empty());
     }
 
-    #[test]
-    fn load_project_yaml() {
+    #[tokio::test]
+    async fn load_project_yaml() {
         let dir = tempfile::tempdir().unwrap();
         let ozzie_dir = dir.path().join(".ozzie");
         std::fs::create_dir_all(&ozzie_dir).unwrap();
@@ -160,7 +167,7 @@ memory:
         std::fs::write(ozzie_dir.join("project.yaml"), yaml).unwrap();
         std::fs::write(ozzie_dir.join("ozzie.md"), "# Coaching\n\nObjectif: squat 120kg.").unwrap();
 
-        let manifest = load_project(dir.path()).unwrap();
+        let manifest = load_project(dir.path()).await.unwrap();
         assert_eq!(manifest.name, "coaching");
         assert_eq!(manifest.description, "Programme musculation");
         assert_eq!(manifest.skills, vec!["log-session"]);
@@ -177,34 +184,34 @@ memory:
         assert_eq!(mem.extract[0].focus, "métriques de performance");
     }
 
-    #[test]
-    fn load_minimal_yaml() {
+    #[tokio::test]
+    async fn load_minimal_yaml() {
         let dir = tempfile::tempdir().unwrap();
         let ozzie_dir = dir.path().join(".ozzie");
         std::fs::create_dir_all(&ozzie_dir).unwrap();
         std::fs::write(ozzie_dir.join("project.yaml"), "name: minimal\n").unwrap();
 
-        let manifest = load_project(dir.path()).unwrap();
+        let manifest = load_project(dir.path()).await.unwrap();
         assert_eq!(manifest.name, "minimal");
         assert!(manifest.description.is_empty());
         assert!(manifest.memory.is_none());
         assert!(manifest.instructions.is_empty());
     }
 
-    #[test]
-    fn load_without_ozzie_md() {
+    #[tokio::test]
+    async fn load_without_ozzie_md() {
         let dir = tempfile::tempdir().unwrap();
         let ozzie_dir = dir.path().join(".ozzie");
         std::fs::create_dir_all(&ozzie_dir).unwrap();
         std::fs::write(ozzie_dir.join("project.yaml"), "name: bare\ndescription: No instructions\n").unwrap();
 
-        let manifest = load_project(dir.path()).unwrap();
+        let manifest = load_project(dir.path()).await.unwrap();
         assert_eq!(manifest.name, "bare");
         assert!(manifest.instructions.is_empty());
     }
 
-    #[test]
-    fn discover_project_in_workspaces_root() {
+    #[tokio::test]
+    async fn discover_project_in_workspaces_root() {
         let root = tempfile::tempdir().unwrap();
         let project_dir = root.path().join("coaching");
         let ozzie_dir = project_dir.join(".ozzie");
@@ -215,13 +222,13 @@ memory:
         )
         .unwrap();
 
-        let projects = discover_projects(root.path(), &[]);
+        let projects = discover_projects(root.path(), &[]).await;
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].name, "coaching");
     }
 
-    #[test]
-    fn discover_extra_path() {
+    #[tokio::test]
+    async fn discover_extra_path() {
         let extra = tempfile::tempdir().unwrap();
         let ozzie_dir = extra.path().join(".ozzie");
         std::fs::create_dir_all(&ozzie_dir).unwrap();
@@ -235,7 +242,8 @@ memory:
         let projects = discover_projects(
             empty_root.path(),
             &[extra.path().to_string_lossy().to_string()],
-        );
+        )
+        .await;
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].name, "external");
     }

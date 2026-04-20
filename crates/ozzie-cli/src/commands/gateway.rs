@@ -20,7 +20,9 @@ use ozzie_core::policy::MemoryPendingPairings;
 use ozzie_runtime::JsonPairingStore;
 use ozzie_core::prompt;
 use ozzie_utils::secrets;
-use ozzie_core::skills::{self, SkillRegistry};
+use ozzie_core::profile::ProfileRepository;
+use ozzie_core::project::ProjectRepository;
+use ozzie_core::skills::{self, SkillRegistry, SkillRepository};
 use ozzie_gateway::hub::HubHandler;
 use ozzie_gateway::{AppState, Hub, Server, ServerConfig};
 use ozzie_memory::{MarkdownPageStore, MarkdownStore};
@@ -89,14 +91,16 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let persona = prompt::load_persona(&ozzie_path());
     info!(chars = persona.len(), "persona loaded");
 
-    let user_profile = ozzie_core::profile::load(&ozzie_path())
+    let user_profile = ozzie_core::profile::FsProfileRepository::new(ozzie_path())
+        .load()
+        .await
         .ok()
         .flatten();
     if user_profile.is_some() {
         info!("user profile loaded");
     }
 
-    let (skill_registry, skill_descs) = init_skills();
+    let (skill_registry, skill_descs) = init_skills().await;
 
     let (tool_registry, mcp_shutdown) = init_tools(
         &cfg,
@@ -110,7 +114,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     .await?;
 
     // Project workspaces
-    let project_registry = init_projects(&cfg);
+    let project_registry = init_projects(&cfg).await;
     native::register_project_tools(
         &tool_registry,
         project_registry.clone(),
@@ -365,7 +369,7 @@ fn init_compressor(
     };
 
     // Use LLM-backed summarizer with the default provider
-    let summarizer = ozzie_runtime::llm_summarizer::llm_summarizer(provider);
+    let summarizer = Arc::new(ozzie_runtime::llm_summarizer::LlmSummarizer::new(provider));
     let store = Box::new(ozzie_runtime::layered_store::FileArchiveStore::new(sessions_path()));
     let manager = ozzie_core::layered::Manager::new(store, layered_cfg.clone(), summarizer);
 
@@ -377,9 +381,9 @@ fn init_compressor(
     Some(Arc::new(LayeredContextCompressor::from_manager(manager)))
 }
 
-fn init_skills() -> (Arc<SkillRegistry>, std::collections::HashMap<String, String>) {
+async fn init_skills() -> (Arc<SkillRegistry>, std::collections::HashMap<String, String>) {
     let skills_dir = skills_path();
-    let loaded = skills::load_skills_dir(&skills_dir);
+    let loaded = skills::FsSkillRepository::new(&skills_dir).load_all().await;
     let descs = skills::skill_descriptions(&loaded);
     let registry = Arc::new(SkillRegistry::new());
     for skill in loaded {
@@ -1157,9 +1161,10 @@ fn resolve_workspaces_root(cfg: &config::Config) -> std::path::PathBuf {
     ozzie_path().join("working")
 }
 
-fn init_projects(cfg: &config::Config) -> Arc<ozzie_core::project::ProjectRegistry> {
+async fn init_projects(cfg: &config::Config) -> Arc<ozzie_core::project::ProjectRegistry> {
     let root = resolve_workspaces_root(cfg);
-    let projects = ozzie_core::project::discover_projects(&root, &cfg.projects.extra_paths);
+    let repo = ozzie_core::project::FsProjectRepository::new(&root, cfg.projects.extra_paths.clone());
+    let projects = repo.discover().await;
     let registry = Arc::new(ozzie_core::project::ProjectRegistry::new());
     for project in projects {
         registry.register(project);

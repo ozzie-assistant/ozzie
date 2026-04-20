@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ozzie_core::domain::{Tool, ToolError, ToolInfo};
-use ozzie_core::project::{load_project, ProjectRegistry};
+use ozzie_core::project::{FsProjectRepository, ProjectRegistry, ProjectRepository};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -119,7 +119,8 @@ impl Tool for InitProjectTool {
         }
 
         // Load and register the new project
-        match load_project(&project_dir) {
+        let repo = FsProjectRepository::new(&project_dir, vec![]);
+        match repo.load(&project_dir).await {
             Ok(manifest) => {
                 self.registry.register(manifest);
             }

@@ -1,9 +1,10 @@
 //! Context compressor — wraps the layered context Manager as a ContextCompressor port.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use ozzie_core::domain::{CompressionError, ContextCompressor, Message};
-use ozzie_core::layered::{Config, Manager, fallback_summarizer};
+use ozzie_core::layered::{Config, FallbackSummarizer, Manager};
 
 use crate::layered_store::FileArchiveStore;
 
@@ -24,7 +25,7 @@ impl LayeredContextCompressor {
     pub fn new(sessions_dir: &Path, cfg: Config) -> Self {
         let store = Box::new(FileArchiveStore::new(sessions_dir));
         Self {
-            manager: Manager::new(store, cfg, Box::new(fallback_summarizer)),
+            manager: Manager::new(store, cfg, Arc::new(FallbackSummarizer)),
         }
     }
 
@@ -45,6 +46,7 @@ impl ContextCompressor for LayeredContextCompressor {
         let (result_msgs, _stats) = self
             .manager
             .apply(session_id, &layered_msgs)
+            .await
             .map_err(|e| CompressionError::Other(e.to_string()))?;
 
         // Convert back to domain messages

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ozzie_core::domain::{SessionStore, Tool, ToolError, ToolInfo, TOOL_CTX};
 use ozzie_core::project::ProjectRegistry;
-use ozzie_core::skills::SkillRegistry;
+use ozzie_core::skills::{FsSkillRepository, SkillRegistry, SkillRepository};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -102,7 +102,7 @@ impl Tool for OpenProjectTool {
         let mut skills_loaded = Vec::new();
         let skills_dir = std::path::Path::new(&project.path).join(".ozzie/skills");
         if skills_dir.exists() {
-            let local_skills = ozzie_core::skills::load_skills_dir(&skills_dir);
+            let local_skills = FsSkillRepository::new(&skills_dir).load_all().await;
             for mut skill in local_skills {
                 skill.source =
                     ozzie_core::skills::SkillSource::Project(project.name.clone());

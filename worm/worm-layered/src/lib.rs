@@ -9,7 +9,7 @@ mod types;
 mod utils;
 
 pub use bm25::BM25;
-pub use indexer::{fallback_summarizer, Indexer, SummarizerFn};
+pub use indexer::{fallback_summarize, FallbackSummarizer, Indexer, Summarizer, SummarizerError};
 pub use keywords::extract_keywords;
 pub use manager::Manager;
 pub use message::{Message, ROLE_ASSISTANT, ROLE_USER};

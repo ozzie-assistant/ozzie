@@ -46,15 +46,16 @@ impl FileArchiveStore {
             .join(format!("archive_{node_id}.json"))
     }
 
-    fn ensure_dirs(&self, session_id: &str) -> std::io::Result<()> {
-        std::fs::create_dir_all(self.archives_dir(session_id))
+    async fn ensure_dirs(&self, session_id: &str) -> std::io::Result<()> {
+        tokio::fs::create_dir_all(self.archives_dir(session_id)).await
     }
 }
 
+#[async_trait::async_trait]
 impl ArchiveStore for FileArchiveStore {
-    fn load_index(&self, session_id: &str) -> Result<Option<Index>, StoreError> {
+    async fn load_index(&self, session_id: &str) -> Result<Option<Index>, StoreError> {
         let path = self.index_path(session_id);
-        match std::fs::read_to_string(&path) {
+        match tokio::fs::read_to_string(&path).await {
             Ok(data) => {
                 let idx: Index =
                     serde_json::from_str(&data).map_err(|e| StoreError::Parse(e.to_string()))?;
@@ -65,8 +66,9 @@ impl ArchiveStore for FileArchiveStore {
         }
     }
 
-    fn save_index(&self, session_id: &str, idx: &Index) -> Result<(), StoreError> {
+    async fn save_index(&self, session_id: &str, idx: &Index) -> Result<(), StoreError> {
         self.ensure_dirs(session_id)
+            .await
             .map_err(|e| StoreError::Io(e.to_string()))?;
 
         let data =
@@ -74,18 +76,23 @@ impl ArchiveStore for FileArchiveStore {
 
         let path = self.index_path(session_id);
         let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, &data).map_err(|e| StoreError::Io(e.to_string()))?;
-        std::fs::rename(&tmp, &path).map_err(|e| StoreError::Io(e.to_string()))?;
+        tokio::fs::write(&tmp, &data)
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))?;
+        tokio::fs::rename(&tmp, &path)
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))?;
         Ok(())
     }
 
-    fn write_archive(
+    async fn write_archive(
         &self,
         session_id: &str,
         node_id: &str,
         payload: &ArchivePayload,
     ) -> Result<(), StoreError> {
         self.ensure_dirs(session_id)
+            .await
             .map_err(|e| StoreError::Io(e.to_string()))?;
 
         let data = serde_json::to_string_pretty(payload)
@@ -93,18 +100,22 @@ impl ArchiveStore for FileArchiveStore {
 
         let path = self.archive_path(session_id, node_id);
         let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, &data).map_err(|e| StoreError::Io(e.to_string()))?;
-        std::fs::rename(&tmp, &path).map_err(|e| StoreError::Io(e.to_string()))?;
+        tokio::fs::write(&tmp, &data)
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))?;
+        tokio::fs::rename(&tmp, &path)
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))?;
         Ok(())
     }
 
-    fn read_archive(
+    async fn read_archive(
         &self,
         session_id: &str,
         node_id: &str,
     ) -> Result<Option<ArchivePayload>, StoreError> {
         let path = self.archive_path(session_id, node_id);
-        match std::fs::read_to_string(&path) {
+        match tokio::fs::read_to_string(&path).await {
             Ok(data) => {
                 let payload: ArchivePayload =
                     serde_json::from_str(&data).map_err(|e| StoreError::Parse(e.to_string()))?;
@@ -115,13 +126,13 @@ impl ArchiveStore for FileArchiveStore {
         }
     }
 
-    fn cleanup_archives(
+    async fn cleanup_archives(
         &self,
         session_id: &str,
         valid_node_ids: &[String],
     ) -> Result<(), StoreError> {
         let dir = self.archives_dir(session_id);
-        let entries = match std::fs::read_dir(&dir) {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(StoreError::Io(e.to_string())),
@@ -132,12 +143,16 @@ impl ArchiveStore for FileArchiveStore {
             .map(|id| format!("archive_{id}.json"))
             .collect();
 
-        for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str()
-                && entry.file_type().map(|t| t.is_file()).unwrap_or(false)
-                && !valid.contains(name)
-            {
-                let _ = std::fs::remove_file(entry.path());
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if let Some(name) = entry.file_name().to_str() {
+                let is_file = entry
+                    .file_type()
+                    .await
+                    .map(|t| t.is_file())
+                    .unwrap_or(false);
+                if is_file && !valid.contains(name) {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
             }
         }
         Ok(())
@@ -146,11 +161,13 @@ impl ArchiveStore for FileArchiveStore {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
-    use worm_layered::Message;
     use ozzie_core::layered::{
-        Config, Indexer, Node, NodeMetadata, NodeTokenEstimate, Root, fallback_summarizer,
+        Config, Indexer, Node, NodeMetadata, NodeTokenEstimate, Root, FallbackSummarizer,
     };
+    use worm_layered::Message;
 
     // ── Store unit tests ─────────────────────────────────────────────
 
@@ -190,29 +207,29 @@ mod tests {
         }
     }
 
-    #[test]
-    fn index_round_trip() {
+    #[tokio::test]
+    async fn index_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
         let idx = test_index("sess_test");
 
-        store.save_index("sess_test", &idx).unwrap();
-        let loaded = store.load_index("sess_test").unwrap().unwrap();
+        store.save_index("sess_test", &idx).await.unwrap();
+        let loaded = store.load_index("sess_test").await.unwrap().unwrap();
         assert_eq!(loaded.session_id, "sess_test");
         assert_eq!(loaded.nodes.len(), 1);
         assert_eq!(loaded.root.child_ids, vec!["abc123"]);
     }
 
-    #[test]
-    fn load_nonexistent_index() {
+    #[tokio::test]
+    async fn load_nonexistent_index() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
-        let result = store.load_index("sess_missing").unwrap();
+        let result = store.load_index("sess_missing").await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn archive_round_trip() {
+    #[tokio::test]
+    async fn archive_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
 
@@ -222,23 +239,28 @@ mod tests {
         };
         store
             .write_archive("sess_test", "abc123", &payload)
+            .await
             .unwrap();
 
-        let loaded = store.read_archive("sess_test", "abc123").unwrap().unwrap();
+        let loaded = store
+            .read_archive("sess_test", "abc123")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(loaded.node_id, "abc123");
         assert!(loaded.transcript.contains("[user]: hello"));
     }
 
-    #[test]
-    fn read_nonexistent_archive() {
+    #[tokio::test]
+    async fn read_nonexistent_archive() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
-        let result = store.read_archive("sess_test", "missing").unwrap();
+        let result = store.read_archive("sess_test", "missing").await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn cleanup_archives() {
+    #[tokio::test]
+    async fn cleanup_archives() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
 
@@ -247,27 +269,43 @@ mod tests {
                 node_id: id.to_string(),
                 transcript: "test".to_string(),
             };
-            store.write_archive("sess_test", id, &payload).unwrap();
+            store
+                .write_archive("sess_test", id, &payload)
+                .await
+                .unwrap();
         }
 
         store
             .cleanup_archives("sess_test", &["aaa".to_string(), "ccc".to_string()])
+            .await
             .unwrap();
 
-        assert!(store.read_archive("sess_test", "aaa").unwrap().is_some());
-        assert!(store.read_archive("sess_test", "bbb").unwrap().is_none());
-        assert!(store.read_archive("sess_test", "ccc").unwrap().is_some());
+        assert!(store
+            .read_archive("sess_test", "aaa")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(store
+            .read_archive("sess_test", "bbb")
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .read_archive("sess_test", "ccc")
+            .await
+            .unwrap()
+            .is_some());
     }
 
     // ── Indexer integration tests ────────────────────────────────────
 
     fn make_indexer(dir: &Path) -> Indexer {
         let store = Box::new(FileArchiveStore::new(dir));
-        Indexer::new(store, Box::new(fallback_summarizer), Config::default())
+        Indexer::new(store, Arc::new(FallbackSummarizer), Config::default())
     }
 
-    #[test]
-    fn indexer_build_creates_index() {
+    #[tokio::test]
+    async fn indexer_build_creates_index() {
         let dir = tempfile::tempdir().unwrap();
         let indexer = make_indexer(dir.path());
 
@@ -281,47 +319,47 @@ mod tests {
             })
             .collect();
 
-        let index = indexer.build_or_update("sess_test", &msgs).unwrap();
+        let index = indexer.build_or_update("sess_test", &msgs).await.unwrap();
         assert_eq!(index.session_id, "sess_test");
         assert_eq!(index.nodes.len(), 2); // 16 msgs / 8 = 2 chunks
         assert_eq!(index.root.child_ids.len(), 2);
     }
 
-    #[test]
-    fn indexer_cache_hit() {
+    #[tokio::test]
+    async fn indexer_cache_hit() {
         let dir = tempfile::tempdir().unwrap();
         let indexer = make_indexer(dir.path());
 
         let msgs: Vec<Message> = (0..8).map(|i| Message::user(format!("msg{i}"))).collect();
 
-        let idx1 = indexer.build_or_update("sess_test", &msgs).unwrap();
-        let idx2 = indexer.build_or_update("sess_test", &msgs).unwrap();
+        let idx1 = indexer.build_or_update("sess_test", &msgs).await.unwrap();
+        let idx2 = indexer.build_or_update("sess_test", &msgs).await.unwrap();
 
         assert_eq!(idx1.nodes[0].checksum, idx2.nodes[0].checksum);
         assert_eq!(idx1.nodes[0].id, idx2.nodes[0].id);
     }
 
-    #[test]
-    fn indexer_incremental() {
+    #[tokio::test]
+    async fn indexer_incremental() {
         let dir = tempfile::tempdir().unwrap();
         let indexer = make_indexer(dir.path());
 
         let msgs1: Vec<Message> = (0..8).map(|i| Message::user(format!("msg{i}"))).collect();
-        let idx1 = indexer.build_or_update("sess_test", &msgs1).unwrap();
+        let idx1 = indexer.build_or_update("sess_test", &msgs1).await.unwrap();
         assert_eq!(idx1.nodes.len(), 1);
 
         let mut msgs2 = msgs1;
         for i in 8..16 {
             msgs2.push(Message::user(format!("msg{i}")));
         }
-        let idx2 = indexer.build_or_update("sess_test", &msgs2).unwrap();
+        let idx2 = indexer.build_or_update("sess_test", &msgs2).await.unwrap();
         assert_eq!(idx2.nodes.len(), 2);
         assert_eq!(idx1.nodes[0].id, idx2.nodes[0].id);
     }
 
     // ── Retriever integration tests ──────────────────────────────────
 
-    fn build_test_index(dir: &Path) -> Index {
+    async fn build_test_index(dir: &Path) -> Index {
         let indexer = make_indexer(dir);
 
         let msgs: Vec<Message> = (0..32)
@@ -338,11 +376,11 @@ mod tests {
             })
             .collect();
 
-        indexer.build_or_update("sess_test", &msgs).unwrap()
+        indexer.build_or_update("sess_test", &msgs).await.unwrap()
     }
 
-    #[test]
-    fn retrieve_empty_index() {
+    #[tokio::test]
+    async fn retrieve_empty_index() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
 
@@ -356,18 +394,20 @@ mod tests {
         };
 
         let retriever = ozzie_core::layered::retriever::Retriever::new(&store, Config::default());
-        let result = retriever.retrieve("sess_test", &index, "anything");
+        let result = retriever.retrieve("sess_test", &index, "anything").await;
         assert!(result.selections.is_empty());
     }
 
-    #[test]
-    fn retrieve_returns_selections() {
+    #[tokio::test]
+    async fn retrieve_returns_selections() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
-        let index = build_test_index(dir.path());
+        let index = build_test_index(dir.path()).await;
 
         let retriever = ozzie_core::layered::retriever::Retriever::new(&store, Config::default());
-        let result = retriever.retrieve("sess_test", &index, "rust programming memory safety");
+        let result = retriever
+            .retrieve("sess_test", &index, "rust programming memory safety")
+            .await;
 
         assert!(
             !result.selections.is_empty(),
@@ -376,18 +416,20 @@ mod tests {
         assert!(result.decision.reached_layer.is_some());
     }
 
-    #[test]
-    fn retrieve_budget_respected() {
+    #[tokio::test]
+    async fn retrieve_budget_respected() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
-        let index = build_test_index(dir.path());
+        let index = build_test_index(dir.path()).await;
 
         let cfg = Config {
             max_prompt_tokens: 1000,
             ..Config::default()
         };
         let retriever = ozzie_core::layered::retriever::Retriever::new(&store, cfg);
-        let result = retriever.retrieve("sess_test", &index, "rust programming");
+        let result = retriever
+            .retrieve("sess_test", &index, "rust programming")
+            .await;
 
         let budget = (1000.0_f64 * 0.45).floor() as usize;
         assert!(
@@ -398,14 +440,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn retrieve_unrelated_query() {
+    #[tokio::test]
+    async fn retrieve_unrelated_query() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileArchiveStore::new(dir.path());
-        let index = build_test_index(dir.path());
+        let index = build_test_index(dir.path()).await;
 
         let retriever = ozzie_core::layered::retriever::Retriever::new(&store, Config::default());
-        let result = retriever.retrieve("sess_test", &index, "cooking recipes for dinner");
+        let result = retriever
+            .retrieve("sess_test", &index, "cooking recipes for dinner")
+            .await;
         assert!(result.decision.reached_layer.is_some());
     }
 
@@ -429,22 +473,22 @@ mod tests {
 
     fn make_manager(dir: &Path, cfg: Config) -> ozzie_core::layered::Manager {
         let store = Box::new(FileArchiveStore::new(dir));
-        ozzie_core::layered::Manager::new(store, cfg, Box::new(fallback_summarizer))
+        ozzie_core::layered::Manager::new(store, cfg, Arc::new(FallbackSummarizer))
     }
 
-    #[test]
-    fn short_history_unchanged() {
+    #[tokio::test]
+    async fn short_history_unchanged() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = make_manager(dir.path(), Config::default());
 
         let history = make_history(10);
-        let (result, stats) = mgr.apply("sess_test", &history).unwrap();
+        let (result, stats) = mgr.apply("sess_test", &history).await.unwrap();
         assert_eq!(result.len(), 10);
         assert!(stats.is_none());
     }
 
-    #[test]
-    fn long_history_compressed() {
+    #[tokio::test]
+    async fn long_history_compressed() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = Config {
             max_recent_messages: 4,
@@ -454,7 +498,7 @@ mod tests {
         let mgr = make_manager(dir.path(), cfg);
 
         let history = make_history(20);
-        let (result, stats) = mgr.apply("sess_test", &history).unwrap();
+        let (result, stats) = mgr.apply("sess_test", &history).await.unwrap();
 
         let stats = stats.unwrap();
         assert!(stats.nodes > 0, "should have selected nodes");
@@ -466,8 +510,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn apply_creates_index() {
+    #[tokio::test]
+    async fn apply_creates_index() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = Config {
             max_recent_messages: 4,
@@ -477,10 +521,10 @@ mod tests {
         let mgr = make_manager(dir.path(), cfg);
 
         let history = make_history(20);
-        mgr.apply("sess_test", &history).unwrap();
+        mgr.apply("sess_test", &history).await.unwrap();
 
         let check_store = FileArchiveStore::new(dir.path());
-        let idx = check_store.load_index("sess_test").unwrap();
+        let idx = check_store.load_index("sess_test").await.unwrap();
         assert!(idx.is_some());
     }
 }

@@ -2,7 +2,7 @@ use std::io::{self, BufRead, Write as IoWrite};
 use std::path::Path;
 use std::sync::Arc;
 
-use ozzie_core::profile::{self, UserProfile};
+use ozzie_core::profile::{FsProfileRepository, ProfileRepository, UserProfile};
 use ozzie_core::prompt::load_persona;
 use ozzie_llm::{ChatMessage, ChatRole, Provider};
 use ozzie_utils::i18n;
@@ -97,7 +97,9 @@ pub async fn run(ozzie_path: &Path, language: Option<&str>) -> anyhow::Result<()
     }
 
     // Save profile
-    profile::save(ozzie_path, &profile)
+    FsProfileRepository::new(ozzie_path)
+        .save(&profile)
+        .await
         .map_err(|e| anyhow::anyhow!("failed to save profile: {e}"))?;
     println!("{}", i18n::t("wizard.acquaintance.saved"));
 

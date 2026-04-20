@@ -7,13 +7,13 @@ use crate::types::{SkillMD, TriggersDef};
 
 /// Loads all skills from `$OZZIE_PATH/skills/*/SKILL.md`.
 /// Returns an empty vec if the directory doesn't exist.
-pub fn load_skills_dir(skills_dir: &Path) -> Vec<SkillMD> {
+pub(crate) async fn load_skills_dir(skills_dir: &Path) -> Vec<SkillMD> {
     if !skills_dir.exists() {
         debug!(path = %skills_dir.display(), "skills directory not found");
         return Vec::new();
     }
 
-    let entries = match std::fs::read_dir(skills_dir) {
+    let mut entries = match tokio::fs::read_dir(skills_dir).await {
         Ok(e) => e,
         Err(e) => {
             warn!(error = %e, "failed to read skills directory");
@@ -22,16 +22,21 @@ pub fn load_skills_dir(skills_dir: &Path) -> Vec<SkillMD> {
     };
 
     let mut skills = Vec::new();
-    for entry in entries.flatten() {
+    while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
-        if !path.is_dir() {
+        let is_dir = entry
+            .file_type()
+            .await
+            .map(|t| t.is_dir())
+            .unwrap_or(false);
+        if !is_dir {
             continue;
         }
         let skill_file = path.join("SKILL.md");
         if !skill_file.exists() {
             continue;
         }
-        match parse_skill_md(&skill_file) {
+        match parse_skill_md(&skill_file).await {
             Ok(skill) => {
                 debug!(name = %skill.name, "loaded skill");
                 skills.push(skill);
@@ -56,8 +61,9 @@ pub fn skill_descriptions(skills: &[SkillMD]) -> HashMap<String, String> {
 }
 
 /// Parses a SKILL.md file with YAML front-matter.
-pub fn parse_skill_md(path: &Path) -> Result<SkillMD, SkillLoadError> {
-    let content = std::fs::read_to_string(path)
+pub(crate) async fn parse_skill_md(path: &Path) -> Result<SkillMD, SkillLoadError> {
+    let content = tokio::fs::read_to_string(path)
+        .await
         .map_err(|e| SkillLoadError::Io(e.to_string()))?;
     let dir = path
         .parent()
@@ -213,41 +219,41 @@ fn json_value(v: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn load_empty_dir() {
+    #[tokio::test]
+    async fn load_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let skills = load_skills_dir(dir.path());
+        let skills = load_skills_dir(dir.path()).await;
         assert!(skills.is_empty());
     }
 
-    #[test]
-    fn load_nonexistent_dir() {
-        let skills = load_skills_dir(Path::new("/nonexistent"));
+    #[tokio::test]
+    async fn load_nonexistent_dir() {
+        let skills = load_skills_dir(Path::new("/nonexistent")).await;
         assert!(skills.is_empty());
     }
 
-    #[test]
-    fn load_skill_no_frontmatter() {
+    #[tokio::test]
+    async fn load_skill_no_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let skill_dir = dir.path().join("my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\nDoes things.").unwrap();
 
-        let skills = load_skills_dir(dir.path());
+        let skills = load_skills_dir(dir.path()).await;
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         assert_eq!(skills[0].description, "My Skill");
     }
 
-    #[test]
-    fn load_skill_with_frontmatter() {
+    #[tokio::test]
+    async fn load_skill_with_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let skill_dir = dir.path().join("deploy");
         std::fs::create_dir_all(&skill_dir).unwrap();
         let content = "---\nname: deploy\ndescription: Deploy to production\n---\n# Deploy\n\nSteps here.";
         std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
 
-        let skills = load_skills_dir(dir.path());
+        let skills = load_skills_dir(dir.path()).await;
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "deploy");
         assert_eq!(skills[0].description, "Deploy to production");

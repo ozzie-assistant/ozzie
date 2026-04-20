@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ozzie_core::domain::{Tool, ToolError, ToolInfo, TOOL_CTX};
 use ozzie_core::domain::SessionStore;
 use ozzie_core::project::ProjectRegistry;
-use ozzie_core::skills::{parse_skill_md, SkillRegistry, SkillSource};
+use ozzie_core::skills::{FsSkillRepository, SkillRegistry, SkillRepository, SkillSource};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -139,7 +139,8 @@ impl Tool for CreateSkillTool {
             .map_err(|e| ToolError::Execution(format!("write SKILL.md: {e}")))?;
 
         // Parse and register
-        match parse_skill_md(&skill_md_path) {
+        let skill_repo = FsSkillRepository::new(&skill_dir);
+        match skill_repo.load_one(&skill_md_path).await {
             Ok(mut skill) => {
                 skill.source = source;
                 self.skill_registry.register(skill);

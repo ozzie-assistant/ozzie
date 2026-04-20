@@ -14,15 +14,16 @@ pub enum StoreError {
 /// Implementations handle reading/writing the index and archive files
 /// for each session. The concrete file-based implementation lives in
 /// `ozzie-runtime::layered_store`.
+#[async_trait::async_trait]
 pub trait ArchiveStore: Send + Sync {
     /// Loads the index for a session. Returns `None` if it doesn't exist.
-    fn load_index(&self, session_id: &str) -> Result<Option<Index>, StoreError>;
+    async fn load_index(&self, session_id: &str) -> Result<Option<Index>, StoreError>;
 
     /// Saves (overwrites) the index for a session.
-    fn save_index(&self, session_id: &str, idx: &Index) -> Result<(), StoreError>;
+    async fn save_index(&self, session_id: &str, idx: &Index) -> Result<(), StoreError>;
 
     /// Writes a full transcript archive for a node.
-    fn write_archive(
+    async fn write_archive(
         &self,
         session_id: &str,
         node_id: &str,
@@ -30,14 +31,14 @@ pub trait ArchiveStore: Send + Sync {
     ) -> Result<(), StoreError>;
 
     /// Reads a full transcript archive for a node.
-    fn read_archive(
+    async fn read_archive(
         &self,
         session_id: &str,
         node_id: &str,
     ) -> Result<Option<ArchivePayload>, StoreError>;
 
     /// Removes archive files whose node IDs are not in the valid set.
-    fn cleanup_archives(
+    async fn cleanup_archives(
         &self,
         session_id: &str,
         valid_node_ids: &[String],

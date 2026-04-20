@@ -1,8 +1,12 @@
+mod repository;
+mod synthesizer;
 mod types;
-mod store;
 
-pub use store::{load, save, ProfileSynthesizer};
+pub use repository::{
+    FsProfileRepository, InMemoryProfileRepository, ProfileError, ProfileRepository,
+};
+pub use synthesizer::ProfileSynthesizer;
 pub use types::{UserProfile, WhoamiEntry, WhoamiSource};
 
-/// Default filename used by [`load`] and [`save`].
+/// Default filename used by [`FsProfileRepository`].
 pub const PROFILE_FILE: &str = "profile.jsonc";

@@ -1,9 +1,9 @@
 // Re-export from worm-layered — the canonical source of truth.
 pub use worm_layered::{
-    extract_keywords, chunk_messages, estimate_tokens, fallback_summarizer, trim_to_tokens,
-    ApplyResult, ArchivePayload, ArchiveStore, BM25, Config, Index, Indexer, Layer,
-    Manager, Node, NodeMetadata, NodeTokenEstimate, RetrievalDecision, RetrievalResult,
-    Root, Selection, StoreError, SummarizerFn, TokenUsage,
+    extract_keywords, chunk_messages, estimate_tokens, fallback_summarize, trim_to_tokens,
+    ApplyResult, ArchivePayload, ArchiveStore, BM25, Config, FallbackSummarizer, Index, Indexer,
+    Layer, Manager, Node, NodeMetadata, NodeTokenEstimate, RetrievalDecision, RetrievalResult,
+    Root, Selection, StoreError, Summarizer, SummarizerError, TokenUsage,
 };
 
 // Re-export submodules for consumers using `layered::store::*` and `layered::retriever::*` paths.
