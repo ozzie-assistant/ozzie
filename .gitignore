@@ -1,3 +1,6 @@
+# Local task plans (not committed)
+local-tasks/
+
 # Build
 build/
 bin/
