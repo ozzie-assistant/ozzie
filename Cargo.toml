@@ -89,6 +89,8 @@ worm-layered = { version = "0.1.0", path = "worm/worm-layered" }
 worm-sandbox = { version = "0.1.0", path = "worm/worm-sandbox" }
 worm-skills = { version = "0.1.0", path = "worm/worm-skills" }
 worm-project = { version = "0.1.0", path = "worm/worm-project" }
+worm-memory = { version = "0.1.0", path = "worm/worm-memory" }
+worm-memory-sqlite = { version = "0.1.0", path = "worm/worm-memory-sqlite" }
 
 # Connectors
 ozzie-gateway-client = { version = "0.1.0", path = "connectors/ozzie-gateway-client" }

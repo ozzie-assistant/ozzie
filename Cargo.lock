@@ -4544,6 +4544,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "worm-memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "worm-memory-sqlite"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "worm-memory",
+]
+
+[[package]]
 name = "worm-profile"
 version = "0.1.0"
 dependencies = [

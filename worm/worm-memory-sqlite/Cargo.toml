@@ -1,0 +1,24 @@
+[package]
+name = "worm-memory-sqlite"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLite backend for worm-memory — FTS5, brute-force vector, markdown file sync"
+keywords = ["ai-agent", "memory", "sqlite", "fts5"]
+categories = ["database"]
+
+[dependencies]
+worm-memory = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"
