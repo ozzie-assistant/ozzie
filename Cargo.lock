@@ -1986,6 +1986,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "worm-dream",
  "worm-layered",
  "worm-memory",
  "worm-profile",
@@ -2155,6 +2156,28 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ozzie-tui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossterm 0.28.1",
+ "futures-util",
+ "ozzie-client",
+ "ozzie-protocol",
+ "ozzie-types",
+ "ozzie-utils",
+ "pulldown-cmark",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4523,6 +4546,19 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "worm-dream"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "worm-memory",
 ]
 
 [[package]]

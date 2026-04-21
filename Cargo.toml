@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "connectors/*", "worm/*"]
+members = ["crates/*", "connectors/*", "clients/*", "worm/*"]
 
 [workspace.package]
 edition = "2024"
@@ -91,6 +91,7 @@ worm-skills = { version = "0.1.0", path = "worm/worm-skills" }
 worm-project = { version = "0.1.0", path = "worm/worm-project" }
 worm-profile-fs = { version = "0.1.0", path = "worm/worm-profile-fs" }
 worm-memory = { version = "0.1.0", path = "worm/worm-memory" }
+worm-dream = { version = "0.1.0", path = "worm/worm-dream" }
 worm-memory-sqlite = { version = "0.1.0", path = "worm/worm-memory-sqlite" }
 
 # Connectors

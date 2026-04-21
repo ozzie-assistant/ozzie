@@ -16,6 +16,7 @@ worm-skills = { workspace = true }
 worm-project = { workspace = true }
 worm-profile-fs = { workspace = true }
 worm-memory = { workspace = true }
+worm-dream = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
