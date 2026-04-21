@@ -199,12 +199,14 @@ pub trait ContextCompressor: Send + Sync {
 
 // ---- Command Sandbox Port ----
 
-/// Executes a shell command inside an OS-level sandbox.
-///
-/// Implemented by platform-specific backends:
-/// - `SeatbeltExecutor` (macOS) — Apple sandbox profiles
-/// - `LandlockExecutor` (Linux) — Linux Security Module
-/// - `NoopExecutor` (fallback) — no isolation
+/// Result of a sandboxed command execution.
+#[derive(Debug, Clone)]
+pub struct SandboxOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
 #[async_trait::async_trait]
 pub trait CommandSandbox: Send + Sync {
     /// Runs a command with restricted OS-level permissions.
@@ -214,7 +216,7 @@ pub trait CommandSandbox: Send + Sync {
         command: &str,
         work_dir: &str,
         timeout: std::time::Duration,
-    ) -> Result<std::process::Output, ToolError>;
+    ) -> Result<SandboxOutput, ToolError>;
 
     /// Returns the sandbox backend name (for logging).
     fn backend_name(&self) -> &'static str;

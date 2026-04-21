@@ -88,7 +88,8 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         .and_then(|p| p.context_window);
     let compressor = init_compressor(&cfg, provider.clone(), default_context_window);
 
-    let persona = prompt::load_persona(&ozzie_path());
+    let soul_text = std::fs::read_to_string(ozzie_path().join("SOUL.md")).ok();
+    let persona = prompt::load_persona(soul_text.as_deref());
     info!(chars = persona.len(), "persona loaded");
 
     let user_profile = ozzie_core::profile::FsProfileRepository::new(ozzie_path())

@@ -32,7 +32,8 @@ pub async fn run(ozzie_path: &Path, language: Option<&str>) -> anyhow::Result<()
     let provider = crate::provider_factory::build_provider(default_name, provider_cfg, &crate::provider_factory::OzzieSecretResolver)?;
 
     // Load persona
-    let persona = load_persona(ozzie_path);
+    let soul_text = std::fs::read_to_string(ozzie_path.join("SOUL.md")).ok();
+    let persona = load_persona(soul_text.as_deref());
 
     // Structured questions
     let name = ask_question(&i18n::t("wizard.acquaintance.name"))?;

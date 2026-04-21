@@ -14,13 +14,14 @@ worm-layered = { workspace = true }
 worm-sandbox = { workspace = true }
 worm-skills = { workspace = true }
 worm-project = { workspace = true }
+worm-profile-fs = { workspace = true }
 worm-memory = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tokio = { version = "1", features = ["rt", "sync", "macros", "process"] }
+tokio = { version = "1", features = ["rt", "sync", "macros"] }
 async-trait = { workspace = true }
 rand = { workspace = true }
 hex = "0.4"

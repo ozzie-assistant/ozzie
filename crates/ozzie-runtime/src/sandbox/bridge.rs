@@ -1,4 +1,4 @@
-use ozzie_core::domain::{CommandSandbox, ToolError};
+use ozzie_core::domain::{CommandSandbox, SandboxOutput, ToolError};
 use worm_sandbox::{create_sandbox, SandboxExecutor, SandboxPermissions};
 
 /// Bridge that implements the domain `CommandSandbox` port using a `SandboxExecutor`.
@@ -19,12 +19,18 @@ impl CommandSandbox for SandboxBridge {
         command: &str,
         work_dir: &str,
         timeout: std::time::Duration,
-    ) -> Result<std::process::Output, ToolError> {
+    ) -> Result<SandboxOutput, ToolError> {
         let perms = SandboxPermissions::for_workdir(work_dir);
-        self.executor
+        let output = self
+            .executor
             .exec_sandboxed(command, work_dir, &perms, timeout)
             .await
-            .map_err(|e| ToolError::Execution(format!("sandbox: {e}")))
+            .map_err(|e| ToolError::Execution(format!("sandbox: {e}")))?;
+        Ok(SandboxOutput {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        })
     }
 
     fn backend_name(&self) -> &'static str {

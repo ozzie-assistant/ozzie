@@ -1,31 +1,18 @@
-use std::path::Path;
-
-use tracing::debug;
-
 use super::catalog::{
     AGENT_INSTRUCTIONS, AGENT_INSTRUCTIONS_COMPACT, DEFAULT_PERSONA, DEFAULT_PERSONA_COMPACT,
     SUB_AGENT_INSTRUCTIONS, SUB_AGENT_INSTRUCTIONS_COMPACT,
 };
 use crate::domain::ModelTier;
 
-/// Loads the persona from SOUL.md if present, otherwise returns DefaultPersona.
-pub fn load_persona(ozzie_path: &Path) -> String {
-    let soul_path = ozzie_path.join("SOUL.md");
-    if soul_path.exists() {
-        match std::fs::read_to_string(&soul_path) {
-            Ok(content) if !content.trim().is_empty() => {
-                debug!(path = %soul_path.display(), "loaded custom persona from SOUL.md");
-                return content;
-            }
-            Ok(_) => {
-                debug!("SOUL.md is empty, using default persona");
-            }
-            Err(e) => {
-                debug!(error = %e, "failed to read SOUL.md, using default persona");
-            }
-        }
+/// Returns the persona text.
+///
+/// Uses `custom_persona` if provided and non-empty, otherwise returns the default.
+/// The caller is responsible for loading the custom persona from disk (e.g. SOUL.md).
+pub fn load_persona(custom_persona: Option<&str>) -> String {
+    match custom_persona {
+        Some(text) if !text.trim().is_empty() => text.to_string(),
+        _ => DEFAULT_PERSONA.to_string(),
     }
-    DEFAULT_PERSONA.to_string()
 }
 
 /// Returns the appropriate persona for the given model tier.
@@ -58,26 +45,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn load_persona_default_when_no_soul() {
-        let dir = tempfile::tempdir().unwrap();
-        let persona = load_persona(dir.path());
+    fn load_persona_default_when_none() {
+        let persona = load_persona(None);
         assert!(persona.contains("Ozzie"));
         assert!(persona.contains("Simplicity first"));
     }
 
     #[test]
-    fn load_persona_from_soul_md() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SOUL.md"), "Custom persona text").unwrap();
-        let persona = load_persona(dir.path());
+    fn load_persona_custom() {
+        let persona = load_persona(Some("Custom persona text"));
         assert_eq!(persona, "Custom persona text");
     }
 
     #[test]
-    fn load_persona_empty_soul_falls_back() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SOUL.md"), "   ").unwrap();
-        let persona = load_persona(dir.path());
+    fn load_persona_empty_falls_back() {
+        let persona = load_persona(Some("   "));
         assert!(persona.contains("Ozzie"));
     }
 

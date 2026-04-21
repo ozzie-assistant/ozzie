@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ozzie_core::domain::{CommandSandbox, Tool, ToolError, ToolInfo};
+use ozzie_core::domain::{CommandSandbox, SandboxOutput, Tool, ToolError, ToolInfo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -134,16 +134,21 @@ impl Tool for ExecuteTool {
             cmd.current_dir(work_dir);
             ozzie_core::conscience::strip_blocked_env(&mut cmd);
 
-            tokio::time::timeout(timeout, cmd.output())
+            let raw = tokio::time::timeout(timeout, cmd.output())
                 .await
                 .map_err(|_| ToolError::Execution(format!("command timed out after {}s", args.timeout)))?
-                .map_err(|e| ToolError::Execution(format!("command failed: {e}")))?
+                .map_err(|e| ToolError::Execution(format!("command failed: {e}")))?;
+            SandboxOutput {
+                stdout: String::from_utf8_lossy(&raw.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&raw.stderr).to_string(),
+                exit_code: raw.status.code().unwrap_or(-1),
+            }
         };
 
         let result = ExecuteResult {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            exit_code: output.status.code().unwrap_or(-1),
+            stdout: output.stdout.clone(),
+            stderr: output.stderr.clone(),
+            exit_code: output.exit_code,
         };
 
         // Detect OS-level sandbox blocks (Seatbelt on macOS, Landlock on Linux)
