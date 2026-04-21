@@ -1987,6 +1987,7 @@ dependencies = [
  "tokio",
  "tracing",
  "worm-layered",
+ "worm-memory",
  "worm-profile",
  "worm-project",
  "worm-sandbox",
@@ -2098,6 +2099,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "worm-memory",
+ "worm-memory-sqlite",
 ]
 
 [[package]]
@@ -2136,6 +2139,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "worm-layered",
+ "worm-memory",
  "worm-sandbox",
 ]
 

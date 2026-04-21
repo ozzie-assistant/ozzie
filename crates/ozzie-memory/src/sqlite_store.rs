@@ -21,8 +21,9 @@ impl SqliteStore {
             .map_err(|e| MemoryError::Other(format!("create cache dir: {e}")))?;
 
         let db_path = cache_dir.join("memory.db");
-        let conn = Connection::open(&db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        let conn = Connection::open(&db_path).map_err(crate::db_err)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+            .map_err(crate::db_err)?;
 
         let store = Self {
             conn: Mutex::new(conn),
@@ -74,7 +75,8 @@ impl SqliteStore {
                 INSERT INTO memories_fts(rowid, title, content, tags)
                 VALUES (new.rowid, new.title, new.content, new.tags);
             END;",
-        )?;
+        )
+        .map_err(crate::db_err)?;
         Ok(())
     }
 
@@ -92,10 +94,12 @@ impl SqliteStore {
              AND m.merged_into IS NULL
              ORDER BY rank
              LIMIT ?2",
-        )?;
+        )
+        .map_err(crate::db_err)?;
 
         let entries = stmt
-            .query_map(params![query, limit], parse_entry_row)?
+            .query_map(params![query, limit], parse_entry_row)
+            .map_err(crate::db_err)?
             .filter_map(|r| r.ok())
             .collect();
         Ok(entries)
@@ -107,7 +111,8 @@ impl SqliteStore {
         conn.execute(
             "UPDATE memories SET last_used_at = ?1 WHERE id = ?2",
             params![now.to_rfc3339(), id],
-        )?;
+        )
+        .map_err(crate::db_err)?;
         Ok(())
     }
 
@@ -117,7 +122,8 @@ impl SqliteStore {
         conn.execute(
             "UPDATE memories SET confidence = ?1 WHERE id = ?2",
             params![confidence, id],
-        )?;
+        )
+        .map_err(crate::db_err)?;
         Ok(())
     }
 
@@ -183,7 +189,8 @@ impl Store for SqliteStore {
                 content,
                 merged_into,
             ],
-        )?;
+        )
+        .map_err(crate::db_err)?;
 
         Ok(())
     }
@@ -195,7 +202,8 @@ impl Store for SqliteStore {
                     last_used_at, confidence, importance, embedding_model,
                     indexed_at, content, merged_into
              FROM memories WHERE id = ?1",
-        )?;
+        )
+        .map_err(crate::db_err)?;
 
         stmt.query_row(params![id], |row| {
             let entry = parse_entry_row(row)?;
@@ -237,7 +245,8 @@ impl Store for SqliteStore {
                 merged_into,
                 entry.id,
             ],
-        )?;
+        )
+        .map_err(crate::db_err)?;
 
         if rows == 0 {
             return Err(MemoryError::NotFound(format!(
@@ -251,7 +260,8 @@ impl Store for SqliteStore {
 
     async fn delete(&self, id: &str) -> Result<(), MemoryError> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let rows = conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
+        let rows = conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+            .map_err(crate::db_err)?;
         if rows == 0 {
             return Err(MemoryError::NotFound(format!("memory {id:?} not found")));
         }
@@ -265,15 +275,20 @@ impl Store for SqliteStore {
                     last_used_at, confidence, importance, embedding_model,
                     indexed_at, merged_into
              FROM memories WHERE merged_into IS NULL ORDER BY updated_at DESC",
-        )?;
+        )
+        .map_err(crate::db_err)?;
 
         let entries = stmt
-            .query_map([], parse_entry_row)?
+            .query_map([], parse_entry_row)
+            .map_err(crate::db_err)?
             .filter_map(|r| r.ok())
             .collect();
         Ok(entries)
     }
 }
+
+use crate::MemoryEntryMeta;
+use crate::MemorySearchEntry;
 
 #[async_trait::async_trait]
 impl ozzie_core::domain::MemoryStore for SqliteStore {
@@ -281,13 +296,11 @@ impl ozzie_core::domain::MemoryStore for SqliteStore {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<ozzie_core::domain::MemorySearchEntry>, ozzie_core::domain::MemoryError> {
-        let entries = self
-            .search_fts(query, limit)
-            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))?;
+    ) -> Result<Vec<MemorySearchEntry>, MemoryError> {
+        let entries = self.search_fts(query, limit)?;
         Ok(entries
             .into_iter()
-            .map(|e| ozzie_core::domain::MemorySearchEntry {
+            .map(|e| MemorySearchEntry {
                 id: e.id,
                 title: e.title,
                 memory_type: format!("{:?}", e.memory_type),
@@ -299,37 +312,28 @@ impl ozzie_core::domain::MemoryStore for SqliteStore {
     async fn get_content(
         &self,
         id: &str,
-    ) -> Result<String, ozzie_core::domain::MemoryError> {
-        self.get(id)
-            .await
-            .map(|(_, content)| content)
-            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))
+    ) -> Result<String, MemoryError> {
+        self.get(id).await.map(|(_, content)| content)
     }
 
     async fn list_entries(
         &self,
-    ) -> Result<Vec<ozzie_core::domain::MemoryEntryMeta>, ozzie_core::domain::MemoryError> {
-        let entries = self
-            .list()
-            .await
-            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))?;
+    ) -> Result<Vec<MemoryEntryMeta>, MemoryError> {
+        let entries = self.list().await?;
         Ok(entries.into_iter().map(entry_to_meta).collect())
     }
 
     async fn get_entry(
         &self,
         id: &str,
-    ) -> Result<(ozzie_core::domain::MemoryEntryMeta, String), ozzie_core::domain::MemoryError> {
-        let (entry, content) = self
-            .get(id)
-            .await
-            .map_err(|e| ozzie_core::domain::MemoryError::Other(e.to_string()))?;
+    ) -> Result<(MemoryEntryMeta, String), MemoryError> {
+        let (entry, content) = self.get(id).await?;
         Ok((entry_to_meta(entry), content))
     }
 }
 
-fn entry_to_meta(e: MemoryEntry) -> ozzie_core::domain::MemoryEntryMeta {
-    ozzie_core::domain::MemoryEntryMeta {
+fn entry_to_meta(e: MemoryEntry) -> MemoryEntryMeta {
+    MemoryEntryMeta {
         id: e.id,
         title: e.title,
         memory_type: e.memory_type.as_str().to_string(),

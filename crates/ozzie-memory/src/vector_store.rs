@@ -2,29 +2,7 @@ use std::sync::Mutex;
 
 use rusqlite::{params, Connection};
 
-use crate::MemoryError;
-
-/// A single vector search result.
-#[derive(Debug, Clone)]
-pub struct VectorResult {
-    pub id: String,
-    pub similarity: f32,
-}
-
-/// Interface for embedding computation.
-#[async_trait::async_trait]
-pub trait Embedder: Send + Sync {
-    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f64>>, MemoryError>;
-}
-
-/// Interface for vector storage backends.
-#[async_trait::async_trait]
-pub trait VectorStorer: Send + Sync {
-    async fn upsert(&self, id: &str, content: &str, meta: &std::collections::HashMap<String, String>) -> Result<(), MemoryError>;
-    async fn delete(&self, id: &str) -> Result<(), MemoryError>;
-    async fn query(&self, query_text: &str, n_results: usize) -> Result<Vec<VectorResult>, MemoryError>;
-    fn count(&self) -> usize;
-}
+use crate::{Embedder, MemoryError, VectorResult, VectorStorer};
 
 /// Stores embeddings as BLOBs in SQLite and performs brute-force cosine similarity.
 pub struct SqliteVectorStore {
@@ -43,7 +21,8 @@ impl SqliteVectorStore {
                 id TEXT PRIMARY KEY,
                 embedding BLOB NOT NULL
             )",
-        )?;
+        )
+        .map_err(crate::db_err)?;
         Ok(Self {
             conn: Mutex::new(conn),
             embedder,
@@ -84,13 +63,15 @@ impl VectorStorer for SqliteVectorStore {
         conn.execute(
             "INSERT OR REPLACE INTO memory_embeddings(id, embedding) VALUES (?1, ?2)",
             params![id, blob],
-        )?;
+        )
+        .map_err(crate::db_err)?;
         Ok(())
     }
 
     async fn delete(&self, id: &str) -> Result<(), MemoryError> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        conn.execute("DELETE FROM memory_embeddings WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM memory_embeddings WHERE id = ?1", params![id])
+            .map_err(crate::db_err)?;
         Ok(())
     }
 
@@ -98,13 +79,15 @@ impl VectorStorer for SqliteVectorStore {
         let query_vec = self.embed_text(query_text).await?;
 
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let mut stmt = conn.prepare("SELECT id, embedding FROM memory_embeddings")?;
+        let mut stmt = conn.prepare("SELECT id, embedding FROM memory_embeddings")
+            .map_err(crate::db_err)?;
         let mut results: Vec<VectorResult> = stmt
             .query_map([], |row| {
                 let id: String = row.get(0)?;
                 let blob: Vec<u8> = row.get(1)?;
                 Ok((id, blob))
-            })?
+            })
+            .map_err(crate::db_err)?
             .filter_map(|r| r.ok())
             .map(|(id, blob)| {
                 let vec = decode_embedding(&blob);

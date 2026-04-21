@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use ozzie_core::domain::{MemoryError, MemoryRetriever, PageStore, RetrievedMemory};
+use worm_memory::{MemoryEntry, MemoryType};
 use tracing::warn;
 
 /// Two-stage memory retriever: searches wiki pages first, then falls back to entries.
@@ -57,12 +58,23 @@ impl MemoryRetriever for PageAwareRetriever {
                     }
 
                     results.push(RetrievedMemory {
-                        id: pr.id.clone(),
-                        title: pr.title.clone(),
-                        memory_type: "page".to_string(),
+                        entry: MemoryEntry {
+                            id: pr.id.clone(),
+                            title: pr.title.clone(),
+                            source: String::new(),
+                            memory_type: MemoryType::Fact, // pages don't have a real type
+                            tags: pr.tags.clone(),
+                            created_at: Default::default(),
+                            updated_at: Default::default(),
+                            last_used_at: Default::default(),
+                            confidence: 0.0,
+                            importance: Default::default(),
+                            embedding_model: String::new(),
+                            indexed_at: None,
+                            merged_into: None,
+                        },
                         content,
                         score: 2.0, // boost pages above entries
-                        tags: pr.tags.clone(),
                     });
                 }
                 Err(e) => {
@@ -81,7 +93,7 @@ impl MemoryRetriever for PageAwareRetriever {
                             break;
                         }
                         // Skip entries already covered by a returned page
-                        if covered_entry_ids.contains(&entry.id) {
+                        if covered_entry_ids.contains(&entry.entry.id) {
                             continue;
                         }
                         results.push(entry);
@@ -183,12 +195,23 @@ mod tests {
 
     fn make_entry(id: &str, title: &str) -> RetrievedMemory {
         RetrievedMemory {
-            id: id.to_string(),
-            title: title.to_string(),
-            memory_type: "fact".to_string(),
+            entry: MemoryEntry {
+                id: id.to_string(),
+                title: title.to_string(),
+                source: String::new(),
+                memory_type: MemoryType::Fact,
+                tags: vec!["test".to_string()],
+                created_at: Default::default(),
+                updated_at: Default::default(),
+                last_used_at: Default::default(),
+                confidence: 0.0,
+                importance: Default::default(),
+                embedding_model: String::new(),
+                indexed_at: None,
+                merged_into: None,
+            },
             content: format!("Content of {title}"),
             score: 1.0,
-            tags: vec!["test".to_string()],
         }
     }
 
@@ -205,9 +228,9 @@ mod tests {
         let results = retriever.retrieve("rust", &[], 5).await.unwrap();
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].memory_type, "page");
-        assert_eq!(results[0].title, "Rust Patterns");
-        assert_eq!(results[1].title, "Standalone Entry");
+        assert_eq!(results[0].entry.memory_type, MemoryType::Fact);
+        assert_eq!(results[0].entry.title, "Rust Patterns");
+        assert_eq!(results[1].entry.title, "Standalone Entry");
     }
 
     #[tokio::test]
@@ -228,7 +251,7 @@ mod tests {
 
         // Page + mem_3 only (mem_1 and mem_2 are covered by the page)
         assert_eq!(results.len(), 2);
-        let ids: Vec<&str> = results.iter().map(|r| r.id.as_str()).collect();
+        let ids: Vec<&str> = results.iter().map(|r| r.entry.id.as_str()).collect();
         assert!(ids.contains(&"page_rust"));
         assert!(ids.contains(&"mem_3"));
         assert!(!ids.contains(&"mem_1"));
@@ -246,7 +269,7 @@ mod tests {
         let results = retriever.retrieve("test", &[], 5).await.unwrap();
 
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "mem_1");
+        assert_eq!(results[0].entry.id, "mem_1");
     }
 
     #[tokio::test]

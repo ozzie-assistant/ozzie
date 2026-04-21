@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use ozzie_core::domain::{MemoryError, MemoryRetriever, MemoryStore, RetrievedMemory};
+use worm_memory::{MemoryEntry, MemoryType};
 
 /// FTS-based memory retriever backed by any `MemoryStore` implementation.
 pub struct FtsMemoryRetriever {
@@ -41,12 +42,23 @@ impl MemoryRetriever for FtsMemoryRetriever {
             };
 
             results.push(RetrievedMemory {
-                id: entry.id,
-                title: entry.title,
-                memory_type: entry.memory_type,
+                entry: MemoryEntry {
+                    id: entry.id,
+                    title: entry.title,
+                    source: String::new(),
+                    memory_type: entry.memory_type.parse().unwrap_or(MemoryType::Fact),
+                    tags: entry.tags,
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                    last_used_at: Default::default(),
+                    confidence: 0.0,
+                    importance: Default::default(),
+                    embedding_model: String::new(),
+                    indexed_at: None,
+                    merged_into: None,
+                },
                 content,
                 score: 1.0,
-                tags: entry.tags,
             });
         }
 

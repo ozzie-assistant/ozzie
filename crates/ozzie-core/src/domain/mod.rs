@@ -1,21 +1,20 @@
 mod capability;
 mod dream;
-mod memory_schema;
 mod message;
 mod ports;
 mod schedule;
 mod session;
 mod tier;
 mod toolset;
-mod wiki;
 
 pub use capability::*;
 pub use dream::*;
-pub use memory_schema::*;
 pub use message::*;
 pub use ports::*;
 pub use schedule::*;
 pub use session::*;
 pub use tier::*;
 pub use toolset::*;
-pub use wiki::*;
+
+// Memory types re-exported from worm-memory (canonical source of truth).
+pub use worm_memory::{MemorySchema, PageSearchResult, WikiPage};

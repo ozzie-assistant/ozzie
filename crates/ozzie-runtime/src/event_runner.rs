@@ -500,8 +500,8 @@ impl EventRunner {
             .into_iter()
             .filter(|m| m.score >= RELEVANCE_THRESHOLD)
             .map(|m| MemoryInfo {
-                memory_type: m.memory_type,
-                title: m.title,
+                memory_type: m.entry.memory_type.as_str().to_string(),
+                title: m.entry.title,
                 content: m.content,
             })
             .collect()

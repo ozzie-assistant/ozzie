@@ -287,33 +287,35 @@ impl Store for MarkdownStore {
     }
 }
 
+use crate::{MemoryEntryMeta, MemorySearchEntry};
+
 #[async_trait::async_trait]
 impl ozzie_core::domain::MemoryStore for MarkdownStore {
     async fn search_text(
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<ozzie_core::domain::MemorySearchEntry>, ozzie_core::domain::MemoryError> {
+    ) -> Result<Vec<MemorySearchEntry>, MemoryError> {
         self.index.search_text(query, limit).await
     }
 
     async fn get_content(
         &self,
         id: &str,
-    ) -> Result<String, ozzie_core::domain::MemoryError> {
+    ) -> Result<String, MemoryError> {
         self.index.get_content(id).await
     }
 
     async fn list_entries(
         &self,
-    ) -> Result<Vec<ozzie_core::domain::MemoryEntryMeta>, ozzie_core::domain::MemoryError> {
+    ) -> Result<Vec<MemoryEntryMeta>, MemoryError> {
         self.index.list_entries().await
     }
 
     async fn get_entry(
         &self,
         id: &str,
-    ) -> Result<(ozzie_core::domain::MemoryEntryMeta, String), ozzie_core::domain::MemoryError> {
+    ) -> Result<(MemoryEntryMeta, String), MemoryError> {
         self.index.get_entry(id).await
     }
 }

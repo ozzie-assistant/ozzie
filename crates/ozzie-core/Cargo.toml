@@ -14,6 +14,7 @@ worm-layered = { workspace = true }
 worm-sandbox = { workspace = true }
 worm-skills = { workspace = true }
 worm-project = { workspace = true }
+worm-memory = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }

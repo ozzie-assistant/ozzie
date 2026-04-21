@@ -7,6 +7,8 @@ repository.workspace = true
 description = "Ozzie Assistant — semantic memory library (SQLite + FTS5 + cosine)"
 
 [dependencies]
+worm-memory = { workspace = true }
+worm-memory-sqlite = { workspace = true }
 ozzie-core = { workspace = true }
 ozzie-utils = { workspace = true }
 serde = { workspace = true }

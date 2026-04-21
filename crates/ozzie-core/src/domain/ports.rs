@@ -175,125 +175,12 @@ pub trait TierResolver: Send + Sync {
     fn provider_tier(&self, name: &str) -> ModelTier;
 }
 
-// ---- Memory Port ----
+// ---- Memory Port (re-exported from worm-memory) ----
 
-/// A retrieved memory entry for context injection.
-#[derive(Debug, Clone)]
-pub struct RetrievedMemory {
-    pub id: String,
-    /// Human-readable title.
-    pub title: String,
-    /// Memory type (preference, fact, procedure, context).
-    pub memory_type: String,
-    pub content: String,
-    pub score: f64,
-    pub tags: Vec<String>,
-}
-
-/// A single result from a text-based memory search (metadata only, no content).
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct MemorySearchEntry {
-    pub id: String,
-    pub title: String,
-    pub memory_type: String,
-    pub tags: Vec<String>,
-}
-
-/// A full memory entry with metadata (no content).
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct MemoryEntryMeta {
-    pub id: String,
-    pub title: String,
-    pub memory_type: String,
-    pub tags: Vec<String>,
-    pub source: String,
-    pub importance: String,
-    pub confidence: f64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Read-side domain port for memory storage.
-///
-/// Implementors provide full-text search and content retrieval.
-/// The default implementation is `SqliteStore` from `ozzie-memory`.
-#[async_trait::async_trait]
-pub trait MemoryStore: Send + Sync {
-    /// Full-text search returning metadata (no content).
-    async fn search_text(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<MemorySearchEntry>, MemoryError>;
-    /// Fetches full content for a specific memory entry.
-    async fn get_content(&self, id: &str) -> Result<String, MemoryError>;
-    /// Lists all active memory entries (metadata only).
-    async fn list_entries(&self) -> Result<Vec<MemoryEntryMeta>, MemoryError> {
-        // Default: not implemented (returns empty for backward compat)
-        Ok(Vec::new())
-    }
-    /// Fetches full entry metadata + content by ID.
-    async fn get_entry(&self, id: &str) -> Result<(MemoryEntryMeta, String), MemoryError> {
-        let content = self.get_content(id).await?;
-        // Minimal fallback — implementors should override for full metadata
-        Ok((
-            MemoryEntryMeta {
-                id: id.to_string(),
-                title: String::new(),
-                memory_type: String::new(),
-                tags: Vec::new(),
-                source: String::new(),
-                importance: "normal".to_string(),
-                confidence: 0.0,
-                created_at: DateTime::<Utc>::default(),
-                updated_at: DateTime::<Utc>::default(),
-            },
-            content,
-        ))
-    }
-}
-
-/// Retrieves relevant memories for context injection.
-#[async_trait::async_trait]
-pub trait MemoryRetriever: Send + Sync {
-    async fn retrieve(
-        &self,
-        query: &str,
-        tags: &[String],
-        limit: usize,
-    ) -> Result<Vec<RetrievedMemory>, MemoryError>;
-}
-
-// ---- Wiki Page Port ----
-
-/// Domain port for wiki page storage (synthesized thematic pages).
-///
-/// Pages are created/updated by the dream consolidation pipeline.
-/// The `upsert` semantics allow idempotent creation: if a page with
-/// the same slug exists, it is updated and its revision bumped.
-#[async_trait::async_trait]
-pub trait PageStore: Send + Sync {
-    /// Creates or updates a page. On update, bumps revision automatically.
-    async fn upsert(
-        &self,
-        page: &mut super::WikiPage,
-        content: &str,
-    ) -> Result<(), MemoryError>;
-    /// Fetches a page by ID.
-    async fn get(&self, id: &str) -> Result<(super::WikiPage, String), MemoryError>;
-    /// Fetches a page by slug.
-    async fn get_by_slug(&self, slug: &str) -> Result<(super::WikiPage, String), MemoryError>;
-    /// Deletes a page by ID.
-    async fn delete(&self, id: &str) -> Result<(), MemoryError>;
-    /// Lists all pages (metadata only).
-    async fn list(&self) -> Result<Vec<super::WikiPage>, MemoryError>;
-    /// Full-text search returning metadata (no content).
-    async fn search_text(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<super::PageSearchResult>, MemoryError>;
-}
+pub use worm_memory::{
+    MemoryEntryMeta, MemoryError, MemoryRetriever, MemorySearchEntry, MemoryStore, PageStore,
+    RetrievedMemory,
+};
 
 // ---- Compression Port ----
 
@@ -511,12 +398,6 @@ pub enum RunnerError {
     Preempted,
     #[error("model unavailable ({provider}): {cause}")]
     ModelUnavailable { provider: String, cause: String },
-    #[error("{0}")]
-    Other(String),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum MemoryError {
     #[error("{0}")]
     Other(String),
 }
