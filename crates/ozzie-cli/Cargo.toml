@@ -23,6 +23,7 @@ ozzie-llm = { workspace = true }
 ozzie-runtime = { workspace = true }
 ozzie-tools = { workspace = true }
 ozzie-client = { workspace = true }
+ozzie-tui = { workspace = true }
 ozzie-gateway = { workspace = true }
 ozzie-memory = { workspace = true }
 

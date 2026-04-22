@@ -94,6 +94,9 @@ worm-memory = { version = "0.1.0", path = "worm/worm-memory" }
 worm-dream = { version = "0.1.0", path = "worm/worm-dream" }
 worm-memory-sqlite = { version = "0.1.0", path = "worm/worm-memory-sqlite" }
 
+# Clients
+ozzie-tui = { version = "0.1.0", path = "clients/ozzie-tui" }
+
 # Connectors
 ozzie-gateway-client = { version = "0.1.0", path = "connectors/ozzie-gateway-client" }
 ozzie-discord-bridge = { version = "0.1.0", path = "connectors/ozzie-discord-bridge" }

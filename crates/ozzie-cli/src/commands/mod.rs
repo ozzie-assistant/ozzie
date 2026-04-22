@@ -11,7 +11,7 @@ mod schedule;
 mod secret;
 mod sessions;
 mod status;
-
+mod tui;
 mod wake;
 
 use clap::Subcommand;
@@ -45,6 +45,8 @@ pub enum Command {
     Connector(connector::ConnectorArgs),
     /// Manage the Ozzie daemon (start, stop, status).
     Daemon(daemon::DaemonArgs),
+    /// Launch the interactive TUI.
+    Tui(tui::TuiArgs),
 }
 
 /// Launches the interactive REPL (default when no subcommand is given).
@@ -70,5 +72,6 @@ pub async fn run(cmd: Command, config_path: Option<&str>) -> anyhow::Result<()> 
         Command::Pairing(args) => pairing::run(args).await,
         Command::Connector(args) => connector::run(args).await,
         Command::Daemon(args) => daemon::run(args).await,
+        Command::Tui(args) => tui::run(args).await,
     }
 }
