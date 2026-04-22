@@ -5,21 +5,21 @@ use tokio_util::sync::CancellationToken;
 
 use crate::react::PendingDrain;
 
-/// Per-session runtime state for the ReactLoop.
+/// Per-conversation runtime state for the ReactLoop.
 ///
 /// Tracks whether a loop is active, buffers pending user messages,
 /// and holds a cancellation token for explicit stop signals.
-pub struct SessionRuntime {
+pub struct ConversationRuntime {
     /// Cancellation token — triggered by `ctrl+c` or `/stop`.
     /// Behind Mutex so it can be replaced on reset via `&self`.
     cancel_token: Mutex<CancellationToken>,
     /// User messages received while the loop is active.
     pending: Mutex<Vec<String>>,
-    /// Whether a ReactLoop is currently running for this session.
+    /// Whether a ReactLoop is currently running for this conversation.
     active: AtomicBool,
 }
 
-impl SessionRuntime {
+impl ConversationRuntime {
     pub fn new() -> Self {
         Self {
             cancel_token: Mutex::new(CancellationToken::new()),
@@ -28,12 +28,12 @@ impl SessionRuntime {
         }
     }
 
-    /// Returns true if a ReactLoop is currently active for this session.
+    /// Returns true if a ReactLoop is currently active for this conversation.
     pub fn is_active(&self) -> bool {
         self.active.load(Ordering::Acquire)
     }
 
-    /// Marks the session as active (a ReactLoop is running).
+    /// Marks the conversation as active (a ReactLoop is running).
     pub fn set_active(&self, v: bool) {
         self.active.store(v, Ordering::Release);
     }
@@ -53,7 +53,7 @@ impl SessionRuntime {
         self.cancel_token.lock().unwrap().cancel();
     }
 
-    /// Resets the session runtime for a new loop iteration.
+    /// Resets the conversation runtime for a new loop iteration.
     ///
     /// Creates a fresh cancellation token and clears pending messages.
     /// Called after a loop completes or is cancelled.
@@ -64,13 +64,13 @@ impl SessionRuntime {
     }
 }
 
-impl Default for SessionRuntime {
+impl Default for ConversationRuntime {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PendingDrain for SessionRuntime {
+impl PendingDrain for ConversationRuntime {
     fn drain(&self) -> Vec<String> {
         std::mem::take(&mut *self.pending.lock().unwrap())
     }
@@ -81,8 +81,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_session_runtime_is_inactive() {
-        let rt = SessionRuntime::new();
+    fn new_conversation_runtime_is_inactive() {
+        let rt = ConversationRuntime::new();
         assert!(!rt.is_active());
         assert!(!rt.cancel_token().is_cancelled());
         assert!(rt.drain().is_empty());
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn push_and_drain_pending() {
-        let rt = SessionRuntime::new();
+        let rt = ConversationRuntime::new();
         rt.push_pending("msg1".to_string());
         rt.push_pending("msg2".to_string());
 
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn active_flag() {
-        let rt = SessionRuntime::new();
+        let rt = ConversationRuntime::new();
         assert!(!rt.is_active());
 
         rt.set_active(true);
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn cancel_token_propagation() {
-        let rt = SessionRuntime::new();
+        let rt = ConversationRuntime::new();
         let token = rt.cancel_token();
 
         assert!(!token.is_cancelled());
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn reset_creates_fresh_state() {
-        let rt = SessionRuntime::new();
+        let rt = ConversationRuntime::new();
         rt.set_active(true);
         rt.push_pending("msg".to_string());
         rt.cancel();
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn reset_after_cancel_allows_new_token() {
-        let rt = SessionRuntime::new();
+        let rt = ConversationRuntime::new();
         let old_token = rt.cancel_token();
         rt.cancel();
         assert!(old_token.is_cancelled());

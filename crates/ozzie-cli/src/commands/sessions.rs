@@ -1,12 +1,12 @@
 use clap::{Args, Subcommand};
 use ozzie_utils::config::sessions_path;
 use ozzie_utils::names;
-use ozzie_runtime::FileSessionStore;
-use ozzie_runtime::session::SessionStore;
+use ozzie_runtime::FileConversationStore;
+use ozzie_runtime::conversation::ConversationStore;
 
 use crate::output;
 
-/// Session management commands.
+/// Conversation management commands.
 #[derive(Args)]
 pub struct SessionsArgs {
     #[command(subcommand)]
@@ -23,14 +23,14 @@ enum SessionsCommand {
     List,
     /// Show session details.
     Show {
-        /// Session ID.
+        /// Conversation ID.
         id: String,
     },
 }
 
 pub async fn run(args: SessionsArgs) -> anyhow::Result<()> {
     let sessions_dir = sessions_path();
-    let store = FileSessionStore::new(&sessions_dir)?;
+    let store = FileConversationStore::new(&sessions_dir)?;
 
     match args.command {
         SessionsCommand::List => list(&store, args.json).await,
@@ -38,7 +38,7 @@ pub async fn run(args: SessionsArgs) -> anyhow::Result<()> {
     }
 }
 
-async fn list(store: &FileSessionStore, json: bool) -> anyhow::Result<()> {
+async fn list(store: &FileConversationStore, json: bool) -> anyhow::Result<()> {
     let sessions = store.list().await?;
 
     if json {
@@ -72,7 +72,7 @@ async fn list(store: &FileSessionStore, json: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn show(store: &FileSessionStore, id: &str, json: bool) -> anyhow::Result<()> {
+async fn show(store: &FileConversationStore, id: &str, json: bool) -> anyhow::Result<()> {
     let session = store
         .get(id)
         .await?
@@ -88,7 +88,7 @@ async fn show(store: &FileSessionStore, id: &str, json: bool) -> anyhow::Result<
         return output::print_json(&data);
     }
 
-    println!("Session: {} ({})", session.id, names::display_name_pretty(&session.id));
+    println!("Conversation: {} ({})", session.id, names::display_name_pretty(&session.id));
     println!("Status:  {}", session.status);
     println!("Created: {}", session.created_at.format("%Y-%m-%d %H:%M:%S"));
     println!("Updated: {}", session.updated_at.format("%Y-%m-%d %H:%M:%S"));
@@ -130,21 +130,21 @@ async fn show(store: &FileSessionStore, id: &str, json: bool) -> anyhow::Result<
 mod tests {
     use super::*;
     use ozzie_core::domain::Message;
-    use ozzie_runtime::Session;
+    use ozzie_runtime::Conversation;
 
     #[tokio::test]
     async fn list_empty() {
         let dir = tempfile::tempdir().unwrap();
-        let store = FileSessionStore::new(dir.path()).unwrap();
+        let store = FileConversationStore::new(dir.path()).unwrap();
         list(&store, false).await.unwrap();
     }
 
     #[tokio::test]
     async fn list_with_sessions() {
         let dir = tempfile::tempdir().unwrap();
-        let store = FileSessionStore::new(dir.path()).unwrap();
+        let store = FileConversationStore::new(dir.path()).unwrap();
 
-        let session = Session::new("sess_test_one");
+        let session = Conversation::new("sess_test_one");
         store.create(&session).await.unwrap();
         store
             .append_message("sess_test_one", Message::user("hello"))
@@ -158,9 +158,9 @@ mod tests {
     #[tokio::test]
     async fn show_session() {
         let dir = tempfile::tempdir().unwrap();
-        let store = FileSessionStore::new(dir.path()).unwrap();
+        let store = FileConversationStore::new(dir.path()).unwrap();
 
-        let mut session = Session::new("sess_show_test");
+        let mut session = Conversation::new("sess_show_test");
         session.root_dir = Some("/tmp".to_string());
         session.summary = Some("test summary".to_string());
         store.create(&session).await.unwrap();
@@ -180,7 +180,7 @@ mod tests {
     #[tokio::test]
     async fn show_not_found() {
         let dir = tempfile::tempdir().unwrap();
-        let store = FileSessionStore::new(dir.path()).unwrap();
+        let store = FileConversationStore::new(dir.path()).unwrap();
         let result = show(&store, "nonexistent", false).await;
         assert!(result.is_err());
     }

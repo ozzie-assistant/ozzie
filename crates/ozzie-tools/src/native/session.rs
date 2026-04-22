@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ozzie_core::domain::{Tool, ToolError, ToolInfo, TOOL_CTX};
-use ozzie_core::domain::SessionStore;
+use ozzie_core::domain::ConversationStore;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -10,11 +10,11 @@ use crate::registry::{schema_for, ToolSpec};
 
 /// Updates the current session metadata (title, language, working directory, etc.).
 pub struct UpdateSessionTool {
-    store: Arc<dyn SessionStore>,
+    store: Arc<dyn ConversationStore>,
 }
 
 impl UpdateSessionTool {
-    pub fn new(store: Arc<dyn SessionStore>) -> Self {
+    pub fn new(store: Arc<dyn ConversationStore>) -> Self {
         Self { store }
     }
 
@@ -37,7 +37,7 @@ struct UpdateSessionInput {
     /// Preferred response language (e.g. "fr", "en").
     #[serde(default)]
     language: Option<String>,
-    /// Session title.
+    /// Conversation title.
     #[serde(default)]
     title: Option<String>,
     /// Arbitrary key-value metadata to merge into the session.

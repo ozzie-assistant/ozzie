@@ -29,7 +29,7 @@ use ozzie_memory::{MarkdownPageStore, MarkdownStore};
 use ozzie_runtime::approval::EventBusApprovalRequester;
 use ozzie_runtime::scheduler::Scheduler;
 use ozzie_runtime::{
-    CostTracker, EventRunner, EventRunnerConfig, FileSessionStore,
+    CostTracker, EventRunner, EventRunnerConfig, FileConversationStore,
     LayeredContextCompressor, PairingManager, ProcessSupervisor, ProviderRegistry, ReactConfig, ReactLoop, ReactResult, TurnBudget,
 };
 use ozzie_tools::native;
@@ -120,14 +120,14 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         &tool_registry,
         project_registry.clone(),
         skill_registry.clone(),
-        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
         resolve_workspaces_root(&cfg),
     );
     native::register_create_skill_tool(
         &tool_registry,
         skill_registry,
         project_registry.clone(),
-        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
         skills_path(),
     );
     info!(count = project_registry.len(), "projects discovered");
@@ -153,7 +153,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
             approver: approver.clone() as Arc<dyn ozzie_core::conscience::ApprovalRequester>,
             bus: bus.clone(),
             dangerous_tool_names: dangerous_tool_names.clone(),
-            sessions: sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions: sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
         });
         native::register_sub_agent_tools(&tool_registry, &cfg.sub_agents, sub_agent_runner);
         info!(count = cfg.sub_agents.0.len(), "sub-agent tools registered");
@@ -165,7 +165,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let actor_infos = actor_pool.available_actors();
     let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
         bus: bus.clone(),
-        sessions: sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        sessions: sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
         provider,
         persona,
         agent_instructions: prompt::AGENT_INSTRUCTIONS.to_string(),
@@ -211,14 +211,14 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
 
     let _cost_tracker = CostTracker::new(
         bus.clone(),
-        sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+        sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
     );
     info!("cost tracker started");
 
     // Dream consolidation — extracts lasting knowledge from conversations.
     let dream_runner = Arc::new(
         ozzie_runtime::DreamRunner::new(
-            sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
             memory_store.clone() as Arc<dyn ozzie_memory::Store>,
             provider_registry.default_provider().clone(),
             &ozzie_path(),
@@ -250,7 +250,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         hub,
         bus: bus as Arc<dyn ozzie_core::events::EventBus>,
         authenticator,
-        sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>),
+        sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>),
         pairing_manager: Some(pairing_manager),
         chat_storage: Some(chat_storage as Arc<dyn PairingStorage>),
         device_storage: Some(device_storage as Arc<dyn ozzie_core::domain::DeviceStorage>),
@@ -303,9 +303,9 @@ fn load_config() -> config::Config {
     }
 }
 
-fn init_session_store() -> anyhow::Result<Arc<FileSessionStore>> {
+fn init_session_store() -> anyhow::Result<Arc<FileConversationStore>> {
     let sessions = Arc::new(
-        FileSessionStore::new(&sessions_path())
+        FileConversationStore::new(&sessions_path())
             .map_err(|e| anyhow::anyhow!("init session store: {e}"))?,
     );
     info!(sessions_dir = %sessions_path().display(), "session store initialized");
@@ -399,7 +399,7 @@ async fn init_skills() -> (Arc<SkillRegistry>, std::collections::HashMap<String,
 async fn init_tools(
     cfg: &config::Config,
     bus: Arc<Bus>,
-    sessions: Arc<FileSessionStore>,
+    sessions: Arc<FileConversationStore>,
     memory_store: Arc<MarkdownStore>,
     skill_registry: Arc<SkillRegistry>,
     provider_registry: Arc<ProviderRegistry>,
@@ -414,7 +414,7 @@ async fn init_tools(
     native::register_memory_tools(&registry, memory_store, None);
     native::register_session_tools(
         &registry,
-        sessions as Arc<dyn ozzie_runtime::SessionStore>,
+        sessions as Arc<dyn ozzie_runtime::ConversationStore>,
     );
 
     let names = registry.names();
@@ -477,7 +477,7 @@ fn init_pairing(
 
 fn init_hub(
     bus: Arc<Bus>,
-    sessions: Arc<FileSessionStore>,
+    sessions: Arc<FileConversationStore>,
     permissions: Arc<ToolPermissions>,
 ) -> Arc<Hub> {
     let placeholder = Arc::new(NoopHandler);
@@ -486,7 +486,7 @@ fn init_hub(
     let handler = Arc::new(
         ozzie_gateway::handler::RequestHandler::new(
             bus,
-            sessions as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions as Arc<dyn ozzie_runtime::ConversationStore>,
             hub.clone(),
         )
         .with_permissions(permissions),
@@ -869,7 +869,7 @@ struct DirectSubAgentRunner {
     approver: Arc<dyn ozzie_core::conscience::ApprovalRequester>,
     bus: Arc<Bus>,
     dangerous_tool_names: Vec<String>,
-    sessions: Arc<dyn ozzie_runtime::SessionStore>,
+    sessions: Arc<dyn ozzie_runtime::ConversationStore>,
 }
 
 #[async_trait::async_trait]

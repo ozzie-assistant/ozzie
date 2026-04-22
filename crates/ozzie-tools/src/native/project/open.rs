@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ozzie_core::domain::{SessionStore, Tool, ToolError, ToolInfo, TOOL_CTX};
+use ozzie_core::domain::{ConversationStore, Tool, ToolError, ToolInfo, TOOL_CTX};
 use ozzie_core::project::ProjectRegistry;
 use ozzie_core::skills::{FsSkillRepository, SkillRegistry, SkillRepository};
 use schemars::JsonSchema;
@@ -12,14 +12,14 @@ use crate::registry::{schema_for, ToolSpec};
 pub struct OpenProjectTool {
     project_registry: Arc<ProjectRegistry>,
     skill_registry: Arc<SkillRegistry>,
-    session_store: Arc<dyn SessionStore>,
+    session_store: Arc<dyn ConversationStore>,
 }
 
 impl OpenProjectTool {
     pub fn new(
         project_registry: Arc<ProjectRegistry>,
         skill_registry: Arc<SkillRegistry>,
-        session_store: Arc<dyn SessionStore>,
+        session_store: Arc<dyn ConversationStore>,
     ) -> Self {
         Self {
             project_registry,

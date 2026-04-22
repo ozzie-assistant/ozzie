@@ -6,7 +6,7 @@ use tracing::info;
 use ozzie_core::conscience::ToolPermissions;
 use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_protocol::{error_code, Frame, Request};
-use ozzie_runtime::session::{Session, SessionStore};
+use ozzie_runtime::conversation::{Conversation, ConversationStore};
 use ozzie_types::{
     AcceptedResult, CancelledResult, MessagePayload, MessagesResult, SessionResult,
 };
@@ -19,7 +19,7 @@ pub type CancelSessionFn = Arc<dyn Fn(&str) + Send + Sync>;
 /// Default handler for WS request frames.
 pub struct RequestHandler {
     bus: Arc<dyn EventBus>,
-    sessions: Arc<dyn SessionStore>,
+    sessions: Arc<dyn ConversationStore>,
     hub: Arc<Hub>,
     permissions: Option<Arc<ToolPermissions>>,
     cancel_fn: Option<CancelSessionFn>,
@@ -29,7 +29,7 @@ pub struct RequestHandler {
 impl RequestHandler {
     pub fn new(
         bus: Arc<dyn EventBus>,
-        sessions: Arc<dyn SessionStore>,
+        sessions: Arc<dyn ConversationStore>,
         hub: Arc<Hub>,
     ) -> Self {
         Self {
@@ -113,7 +113,7 @@ impl RequestHandler {
                 }
             }
         } else {
-            let mut session = Session::new(
+            let mut session = Conversation::new(
                 ozzie_utils::names::generate_id("sess", &|_: &str| false),
             );
             session.root_dir = p.working_dir;
@@ -302,7 +302,7 @@ impl RequestHandler {
 mod tests {
     use super::*;
     use ozzie_core::events::Bus;
-    use ozzie_runtime::session::InMemorySessionStore;
+    use ozzie_runtime::conversation::InMemoryConversationStore;
 
     struct NoopHandler;
 
@@ -315,11 +315,11 @@ mod tests {
 
     fn make_handler() -> (RequestHandler, Arc<Bus>) {
         let bus = Arc::new(Bus::new(64));
-        let sessions = Arc::new(InMemorySessionStore::new());
+        let sessions = Arc::new(InMemoryConversationStore::new());
         let hub = Hub::new(bus.clone(), Arc::new(NoopHandler) as Arc<dyn HubHandler>);
         let handler = RequestHandler::new(
             bus.clone() as Arc<dyn EventBus>,
-            sessions as Arc<dyn SessionStore>,
+            sessions as Arc<dyn ConversationStore>,
             hub,
         );
         (handler, bus)

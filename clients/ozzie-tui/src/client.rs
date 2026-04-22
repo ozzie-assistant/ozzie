@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
     #[allow(dead_code)]
-    SessionReady(String),
+    ConversationReady(String),
     AssistantDelta(String),
     AssistantDone,
     ToolStart { call_id: String, tool: String, args: String },

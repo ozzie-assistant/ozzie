@@ -30,8 +30,8 @@ pub struct AppState {
     pub bus: Arc<dyn EventBus>,
     /// Optional authenticator. If `None`, all requests pass (insecure mode).
     pub authenticator: Option<Arc<dyn Authenticator>>,
-    /// Session store for REST API.
-    pub sessions: Option<Arc<dyn ozzie_runtime::SessionStore>>,
+    /// Conversation store for REST API.
+    pub sessions: Option<Arc<dyn ozzie_runtime::ConversationStore>>,
     /// Pairing manager for chat connector pairing flows.
     pub pairing_manager: Option<Arc<ozzie_runtime::PairingManager>>,
     /// Chat pairing storage for direct disk operations.

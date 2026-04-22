@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ozzie_core::domain::{Tool, ToolError, ToolInfo, TOOL_CTX};
-use ozzie_core::domain::SessionStore;
+use ozzie_core::domain::ConversationStore;
 use ozzie_core::project::ProjectRegistry;
 use ozzie_core::skills::{FsSkillRepository, SkillRegistry, SkillRepository, SkillSource};
 use schemars::JsonSchema;
@@ -16,7 +16,7 @@ use crate::registry::{schema_for, ToolSpec};
 pub struct CreateSkillTool {
     skill_registry: Arc<SkillRegistry>,
     project_registry: Arc<ProjectRegistry>,
-    session_store: Arc<dyn SessionStore>,
+    session_store: Arc<dyn ConversationStore>,
     skills_path: std::path::PathBuf,
 }
 
@@ -24,7 +24,7 @@ impl CreateSkillTool {
     pub fn new(
         skill_registry: Arc<SkillRegistry>,
         project_registry: Arc<ProjectRegistry>,
-        session_store: Arc<dyn SessionStore>,
+        session_store: Arc<dyn ConversationStore>,
         skills_path: std::path::PathBuf,
     ) -> Self {
         Self {

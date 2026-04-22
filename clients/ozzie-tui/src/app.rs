@@ -181,7 +181,7 @@ impl App {
 
     fn handle_server(&mut self, ev: ServerEvent) {
         match ev {
-            ServerEvent::SessionReady(id) => {
+            ServerEvent::ConversationReady(id) => {
                 self.session_id = id;
             }
             ServerEvent::AssistantDelta(delta) => {

@@ -17,13 +17,13 @@ use dashmap::DashMap;
 
 use crate::pairing_manager::PairingManager;
 use crate::react::{self, PendingDrain as _, ReactObserver};
-use crate::session::{Session, SessionStore};
-use crate::session_runtime::SessionRuntime;
+use crate::conversation::{Conversation, ConversationStore};
+use crate::conversation_runtime::ConversationRuntime;
 
 /// Configuration for building an EventRunner with dynamic prompt composition.
 pub struct EventRunnerConfig {
     pub bus: Arc<dyn EventBus>,
-    pub sessions: Arc<dyn SessionStore>,
+    pub sessions: Arc<dyn ConversationStore>,
     pub provider: Arc<dyn Provider>,
     /// Full persona text (from SOUL.md or DEFAULT_PERSONA).
     pub persona: String,
@@ -74,7 +74,7 @@ pub struct EventRunnerConfig {
 /// AssistantStream and AssistantMessage events back to the bus.
 pub struct EventRunner {
     bus: Arc<dyn EventBus>,
-    sessions: Arc<dyn SessionStore>,
+    sessions: Arc<dyn ConversationStore>,
     provider: Arc<dyn Provider>,
     /// Pre-composed static portion of the system prompt (persona + instructions + language + skills + actors).
     static_prompt: String,
@@ -89,7 +89,7 @@ pub struct EventRunner {
     /// Optional pairing manager for connector message routing and policy resolution.
     pairing_manager: Option<Arc<PairingManager>>,
     /// Per-session runtime state (cancellation, pending messages, active flag).
-    session_runtimes: Arc<DashMap<String, Arc<SessionRuntime>>>,
+    session_runtimes: Arc<DashMap<String, Arc<ConversationRuntime>>>,
     /// Actor pool for capacity management.
     pool: Option<Arc<ActorPool>>,
     /// Provider name for pool slot acquisition.
@@ -206,7 +206,7 @@ impl EventRunner {
     /// Legacy constructor for backward compatibility (static prompt, no tools).
     pub fn new(
         bus: Arc<dyn EventBus>,
-        sessions: Arc<dyn SessionStore>,
+        sessions: Arc<dyn ConversationStore>,
         provider: Arc<dyn Provider>,
         system_prompt: String,
     ) -> Self {
@@ -238,10 +238,10 @@ impl EventRunner {
     }
 
     /// Returns the per-session runtime, creating one if needed.
-    pub fn get_or_create_runtime(&self, session_id: &str) -> Arc<SessionRuntime> {
+    pub fn get_or_create_runtime(&self, session_id: &str) -> Arc<ConversationRuntime> {
         self.session_runtimes
             .entry(session_id.to_string())
-            .or_insert_with(|| Arc::new(SessionRuntime::new()))
+            .or_insert_with(|| Arc::new(ConversationRuntime::new()))
             .clone()
     }
 
@@ -253,7 +253,7 @@ impl EventRunner {
     }
 
     /// Returns a reference to the session runtimes map (for gateway integration).
-    pub fn session_runtimes(&self) -> &Arc<DashMap<String, Arc<SessionRuntime>>> {
+    pub fn session_runtimes(&self) -> &Arc<DashMap<String, Arc<ConversationRuntime>>> {
         &self.session_runtimes
     }
 
@@ -306,11 +306,11 @@ impl EventRunner {
         let runtime = self.get_or_create_runtime(&session_id);
 
         if runtime.is_active() {
-            // Session busy — buffer message for next turn
+            // Conversation busy — buffer message for next turn
             debug!(session_id = %session_id, "session active, buffering user message");
             runtime.push_pending(text);
         } else {
-            // Session idle — start processing (reset clears stale cancel tokens)
+            // Conversation idle — start processing (reset clears stale cancel tokens)
             runtime.reset();
             runtime.set_active(true);
             let runner = self.clone_ref();
@@ -361,7 +361,7 @@ impl EventRunner {
     /// Includes dynamic session context and relevant memories (if any).
     fn compose_system_prompt(
         &self,
-        session: &Session,
+        session: &Conversation,
         message_count: usize,
         memories: &[MemoryInfo],
     ) -> String {
@@ -458,7 +458,7 @@ impl EventRunner {
     /// Filters results by relevance threshold (>= 0.3).
     async fn retrieve_memories(
         &self,
-        session: &Session,
+        session: &Conversation,
         user_content: &str,
         history: &[Message],
     ) -> Vec<MemoryInfo> {
@@ -639,7 +639,7 @@ impl EventRunner {
                 let _ = changed; // consumed above
             }
             Ok(None) => {
-                let mut s = Session::new(session_id.clone());
+                let mut s = Conversation::new(session_id.clone());
                 s.policy_name = Some(policy_name);
                 s.metadata
                     .insert("connector".to_string(), connector.clone());
@@ -717,7 +717,7 @@ impl EventRunner {
                 }
             }
             Ok(None) => {
-                // Session not yet created — nothing to clear, reply anyway.
+                // Conversation not yet created — nothing to clear, reply anyway.
             }
             Err(e) => {
                 warn!(session_id = %session_id, error = %e, "failed to load session for clear");
@@ -738,7 +738,7 @@ impl EventRunner {
         ));
     }
 
-    async fn handle_user_message(&self, event: Event, runtime: Arc<SessionRuntime>) {
+    async fn handle_user_message(&self, event: Event, runtime: Arc<ConversationRuntime>) {
         let session_id = match &event.session_id {
             Some(sid) => sid.clone(),
             None => {
@@ -769,11 +769,11 @@ impl EventRunner {
             Ok(Some(s)) => s,
             Ok(None) => {
                 warn!(session_id = %session_id, "session not found");
-                Session::new(session_id.clone())
+                Conversation::new(session_id.clone())
             }
             Err(e) => {
                 error!(error = %e, "failed to load session");
-                Session::new(session_id.clone())
+                Conversation::new(session_id.clone())
             }
         };
 
@@ -884,7 +884,7 @@ impl EventRunner {
     ///
     /// If the session has no policy, all tools are returned unchanged.
     /// If the policy is unrecognised, all tools are returned (fail-open for unknown policies).
-    fn tools_for_session(&self, session: &Session) -> (Vec<Arc<dyn Tool>>, Vec<ToolDefinition>) {
+    fn tools_for_session(&self, session: &Conversation) -> (Vec<Arc<dyn Tool>>, Vec<ToolDefinition>) {
         let Some(ref policy_name) = session.policy_name else {
             return (self.tools.clone(), self.tool_defs.clone());
         };
@@ -914,7 +914,7 @@ impl EventRunner {
         _tool_defs: &[ToolDefinition],
         work_dir: Option<String>,
         git_auto_commit: bool,
-        runtime: &Arc<SessionRuntime>,
+        runtime: &Arc<ConversationRuntime>,
     ) {
         // Acquire actor pool slot so subtasks/schedules see capacity constraints.
         let pool_slot = if let (Some(pool), Some(pname)) = (&self.pool, &self.provider_name) {
@@ -1231,7 +1231,7 @@ impl EventRunner {
 /// LLM cost tracking events, streaming deltas, and connector reactions.
 struct EventRunnerObserver {
     bus: Arc<dyn EventBus>,
-    sessions: Arc<dyn SessionStore>,
+    sessions: Arc<dyn ConversationStore>,
     session_id: String,
 }
 
@@ -1334,7 +1334,7 @@ impl ReactObserver for EventRunnerObserver {
 }
 
 /// Enriches a query with session context for better semantic matching.
-fn enrich_query_with_session(query: &str, session: &Session) -> String {
+fn enrich_query_with_session(query: &str, session: &Conversation) -> String {
     let mut parts = vec![query.to_string()];
     if let Some(ref title) = session.title {
         parts.push(title.clone());
@@ -1349,7 +1349,7 @@ fn enrich_query_with_session(query: &str, session: &Session) -> String {
 }
 
 /// Extracts tags from session metadata for memory retrieval filtering.
-fn extract_session_tags(session: &Session) -> Vec<String> {
+fn extract_session_tags(session: &Conversation) -> Vec<String> {
     let mut tags = Vec::new();
     if let Some(ref lang) = session.language {
         tags.push(lang.to_lowercase());
@@ -1415,7 +1415,7 @@ fn estimate_tool_tokens(tool_defs: &[ToolDefinition]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::InMemorySessionStore;
+    use crate::conversation::InMemoryConversationStore;
     use ozzie_core::events::Bus;
     use ozzie_llm::{ChatResponse, LlmError, TokenUsage, ToolDefinition};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1468,14 +1468,14 @@ mod tests {
     #[tokio::test]
     async fn processes_user_message() {
         let bus = Arc::new(Bus::new(64));
-        let sessions = Arc::new(InMemorySessionStore::new());
+        let sessions = Arc::new(InMemoryConversationStore::new());
         let provider = Arc::new(MockProvider {
             response: "Hello!".to_string(),
             call_count: AtomicUsize::new(0),
         });
 
         // Create a session first
-        let session = Session::new("sess_test");
+        let session = Conversation::new("sess_test");
         sessions.create(&session).await.unwrap();
 
         // Subscribe to assistant events before starting
@@ -1522,16 +1522,16 @@ mod tests {
     #[tokio::test]
     async fn processes_with_config() {
         let bus = Arc::new(Bus::new(64));
-        let sessions = Arc::new(InMemorySessionStore::new());
+        let sessions = Arc::new(InMemoryConversationStore::new());
         let provider = Arc::new(MockProvider {
             response: "Bonjour!".to_string(),
             call_count: AtomicUsize::new(0),
         });
 
-        let mut session = Session::new("sess_config");
+        let mut session = Conversation::new("sess_config");
         session.root_dir = Some("/tmp/test".to_string());
         session.language = Some("fr".to_string());
-        session.title = Some("Test Session".to_string());
+        session.title = Some("Test Conversation".to_string());
         sessions.create(&session).await.unwrap();
 
         let mut rx = bus.subscribe(&[EventKind::AssistantMessage.as_str()]);
@@ -1541,7 +1541,7 @@ mod tests {
 
         let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
             bus: bus.clone(),
-            sessions: sessions.clone() as Arc<dyn SessionStore>,
+            sessions: sessions.clone() as Arc<dyn ConversationStore>,
             provider: provider.clone(),
             persona: "You are Ozzie.".to_string(),
             agent_instructions: "Be helpful.".to_string(),
@@ -1588,27 +1588,27 @@ mod tests {
 
     #[test]
     fn enrich_query_basic() {
-        let mut session = Session::new("s1");
+        let mut session = Conversation::new("s1");
         session.root_dir = Some("/home/user/projects/ozzie".to_string());
         session.language = Some("fr".to_string());
-        session.title = Some("Debug Session".to_string());
+        session.title = Some("Debug Conversation".to_string());
         let enriched = enrich_query_with_session("how do I deploy?", &session);
         assert!(enriched.contains("how do I deploy?"));
-        assert!(enriched.contains("Debug Session"));
+        assert!(enriched.contains("Debug Conversation"));
         assert!(enriched.contains("ozzie")); // basename only
         assert!(!enriched.contains("/home/user")); // no full path
     }
 
     #[test]
     fn enrich_query_minimal_session() {
-        let session = Session::new("s2");
+        let session = Conversation::new("s2");
         let enriched = enrich_query_with_session("hello", &session);
         assert_eq!(enriched, "hello");
     }
 
     #[test]
     fn extract_tags_from_session() {
-        let mut session = Session::new("s3");
+        let mut session = Conversation::new("s3");
         session.language = Some("FR".to_string());
         let tags = extract_session_tags(&session);
         assert_eq!(tags, vec!["fr"]);
@@ -1616,7 +1616,7 @@ mod tests {
 
     #[test]
     fn extract_tags_empty() {
-        let session = Session::new("s4");
+        let session = Conversation::new("s4");
         let tags = extract_session_tags(&session);
         assert!(tags.is_empty());
     }
@@ -1660,7 +1660,7 @@ mod tests {
     fn compose_prompt_with_memories() {
         let runner = EventRunner::new(
             Arc::new(Bus::new(64)),
-            Arc::new(InMemorySessionStore::new()),
+            Arc::new(InMemoryConversationStore::new()),
             Arc::new(MockProvider {
                 response: String::new(),
                 call_count: AtomicUsize::new(0),
@@ -1668,7 +1668,7 @@ mod tests {
             "You are helpful.".to_string(),
         );
 
-        let mut session = Session::new("s5");
+        let mut session = Conversation::new("s5");
         session.root_dir = Some("/tmp/test".to_string());
         session.language = Some("fr".to_string());
 
@@ -1680,7 +1680,7 @@ mod tests {
 
         let prompt = runner.compose_system_prompt(&session, 5, &memories);
         assert!(prompt.contains("You are helpful."));
-        assert!(prompt.contains("Session Context"));
+        assert!(prompt.contains("Conversation Context"));
         assert!(prompt.contains("Relevant Memories"));
         assert!(prompt.contains("**[fact] Project**"));
     }
@@ -1689,7 +1689,7 @@ mod tests {
     fn compose_prompt_without_memories() {
         let runner = EventRunner::new(
             Arc::new(Bus::new(64)),
-            Arc::new(InMemorySessionStore::new()),
+            Arc::new(InMemoryConversationStore::new()),
             Arc::new(MockProvider {
                 response: String::new(),
                 call_count: AtomicUsize::new(0),
@@ -1697,7 +1697,7 @@ mod tests {
             "You are helpful.".to_string(),
         );
 
-        let session = Session::new("s6");
+        let session = Conversation::new("s6");
 
         let prompt = runner.compose_system_prompt(&session, 0, &[]);
         assert_eq!(prompt, "You are helpful.");

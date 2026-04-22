@@ -33,7 +33,7 @@ async fn store_and_query_memory() {
     })
     .await;
 
-    // Session 1: store a memory
+    // Conversation 1: store a memory
     let mut client = gw.connect().await;
     client
         .open_session(OpenSessionOpts {
@@ -59,7 +59,7 @@ async fn store_and_query_memory() {
         "memory store should contain the stored fact"
     );
 
-    // Session 2: query the memory
+    // Conversation 2: query the memory
     let mut client2 = gw.connect().await;
     client2
         .open_session(OpenSessionOpts {

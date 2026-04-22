@@ -9,7 +9,7 @@ use ozzie_core::prompt;
 use ozzie_llm::providers::{OllamaProvider, OpenAIProvider};
 use ozzie_llm::{AuthKind, Provider, ResolvedAuth};
 use ozzie_protocol::EventKind;
-use ozzie_runtime::{EventRunner, EventRunnerConfig, FileSessionStore};
+use ozzie_runtime::{EventRunner, EventRunnerConfig, FileConversationStore};
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 
@@ -129,7 +129,7 @@ impl HubHandler for NoopHandler {
 pub struct TestGateway {
     pub port: u16,
     pub bus: Arc<dyn EventBus>,
-    pub sessions: Arc<FileSessionStore>,
+    pub sessions: Arc<FileConversationStore>,
     pub tempdir: TempDir,
 }
 
@@ -144,7 +144,7 @@ impl TestGateway {
         let tempdir = TempDir::new().expect("create tempdir");
         let sessions_dir = tempdir.path().join("sessions");
         let sessions = Arc::new(
-            FileSessionStore::new(&sessions_dir).expect("create session store"),
+            FileConversationStore::new(&sessions_dir).expect("create session store"),
         );
         let bus = Arc::new(Bus::new(256));
 
@@ -163,7 +163,7 @@ impl TestGateway {
         // EventRunner — minimal config, no dangerous tool wrapping
         let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
             bus: bus.clone(),
-            sessions: sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions: sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
             provider: config.provider,
             persona: prompt::DEFAULT_PERSONA.to_string(),
             agent_instructions: prompt::AGENT_INSTRUCTIONS.to_string(),
@@ -192,7 +192,7 @@ impl TestGateway {
         let hub = Hub::new(bus.clone(), placeholder);
         let mut handler = RequestHandler::new(
             bus.clone(),
-            sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
             hub.clone(),
         )
         .with_permissions(permissions);
@@ -211,7 +211,7 @@ impl TestGateway {
             hub,
             bus: bus.clone() as Arc<dyn EventBus>,
             authenticator: None,
-            sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>),
+            sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>),
             pairing_manager: None,
             chat_storage: None,
             device_storage: None,

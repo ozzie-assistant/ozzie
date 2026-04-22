@@ -242,10 +242,10 @@ mod tests {
         }
     }
 
-    struct SessionApprover;
+    struct ConversationApprover;
 
     #[async_trait::async_trait]
-    impl ApprovalRequester for SessionApprover {
+    impl ApprovalRequester for ConversationApprover {
         async fn request_approval(
             &self,
             _session_id: &str,
@@ -304,7 +304,7 @@ mod tests {
             "mock_cmd",
             perms.clone(),
             bus,
-            Arc::new(SessionApprover),
+            Arc::new(ConversationApprover),
         );
 
         let ctx = ToolContext {
@@ -449,7 +449,7 @@ mod tests {
             "mock_cmd",
             perms,
             bus,
-            Arc::new(SessionApprover),
+            Arc::new(ConversationApprover),
         );
 
         let ctx = ToolContext {

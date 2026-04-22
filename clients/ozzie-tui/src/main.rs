@@ -8,7 +8,7 @@ struct Args {
     #[arg(long, default_value = "http://127.0.0.1:18420")]
     gateway: String,
 
-    /// Session ID to resume.
+    /// Conversation ID to resume.
     #[arg(short, long)]
     session: Option<String>,
 

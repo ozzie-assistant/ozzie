@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ozzie_core::domain::{SessionStore, Tool, ToolError, ToolInfo, TOOL_CTX};
+use ozzie_core::domain::{ConversationStore, Tool, ToolError, ToolInfo, TOOL_CTX};
 use ozzie_core::skills::{SkillRegistry, SkillSource};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -10,13 +10,13 @@ use crate::registry::{schema_for, ToolSpec};
 /// Closes the active project: clears session binding and unloads project skills.
 pub struct CloseProjectTool {
     skill_registry: Arc<SkillRegistry>,
-    session_store: Arc<dyn SessionStore>,
+    session_store: Arc<dyn ConversationStore>,
 }
 
 impl CloseProjectTool {
     pub fn new(
         skill_registry: Arc<SkillRegistry>,
-        session_store: Arc<dyn SessionStore>,
+        session_store: Arc<dyn ConversationStore>,
     ) -> Self {
         Self {
             skill_registry,

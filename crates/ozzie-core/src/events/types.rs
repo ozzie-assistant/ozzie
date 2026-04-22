@@ -100,7 +100,7 @@ pub enum EventPayload {
         tokens_output: u64,
     },
 
-    // Session lifecycle
+    // Conversation lifecycle
     #[serde(rename = "session.created")]
     SessionCreated { session_id: String },
     #[serde(rename = "session.closed")]

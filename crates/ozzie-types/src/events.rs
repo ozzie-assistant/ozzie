@@ -96,19 +96,19 @@ pub struct LlmCallEvent {
 
 // ---- Sessions ----
 
-/// Session created.
+/// Conversation created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCreatedEvent {
     pub session_id: String,
 }
 
-/// Session closed.
+/// Conversation closed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionClosedEvent {
     pub session_id: String,
 }
 
-/// Session history cleared.
+/// Conversation history cleared.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionClearEvent {
     pub session_id: String,

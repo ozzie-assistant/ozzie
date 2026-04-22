@@ -15,7 +15,7 @@ impl StatusLine {
     pub fn render(&self) -> Paragraph<'static> {
         let mut spans: Vec<Span<'static>> = Vec::new();
 
-        // Session ID
+        // Conversation ID
         spans.push(Span::styled(
             format!(" [{}] ", self.session_id),
             Style::default().fg(Color::DarkGray),

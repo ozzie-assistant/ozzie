@@ -209,7 +209,7 @@ pub struct ReactConfig {
     pub budget: TurnBudget,
     /// Optional observer for event emission (streaming, tool calls, etc.).
     pub observer: Option<Arc<dyn ReactObserver>>,
-    /// Session ID for TOOL_CTX injection. When set, tools run with context.
+    /// Conversation ID for TOOL_CTX injection. When set, tools run with context.
     pub session_id: Option<String>,
     /// Working directory for TOOL_CTX.
     pub work_dir: Option<String>,
