@@ -111,14 +111,27 @@ impl RequestHandler {
         req_id: &str,
         p: ozzie_types::OpenConversationParams,
     ) -> Frame {
-        let session = if let Some(sid) = &p.conversation_id {
-            match self.sessions.get(sid).await {
-                Ok(Some(s)) => s,
+        // Resolve the conversation id. Explicit id wins, otherwise fall back to
+        // the registry's active conversation, otherwise create a new one.
+        let explicit_id = p.conversation_id.clone();
+        let resolved_id = explicit_id.or_else(|| {
+            self.conversation_manager.as_ref().and_then(|m| m.active())
+        });
+
+        let session = if let Some(sid) = resolved_id {
+            match self.sessions.get(&sid).await {
+                Ok(Some(s)) => {
+                    // Ensure the registry treats this as the active attention.
+                    if let Some(mgr) = self.conversation_manager.as_ref() {
+                        mgr.set_active(&sid);
+                    }
+                    s
+                }
                 Ok(None) => {
                     return Frame::response_err(
                         req_id,
                         error_code::INVALID_PARAMS,
-                        format!("session not found: {sid}"),
+                        format!("conversation not found: {sid}"),
                     );
                 }
                 Err(e) => {
@@ -141,7 +154,7 @@ impl RequestHandler {
                 return Frame::response_err(
                     req_id,
                     error_code::INTERNAL_ERROR,
-                    format!("create session: {e}"),
+                    format!("create conversation: {e}"),
                 );
             }
 
@@ -153,6 +166,10 @@ impl RequestHandler {
                 },
                 &session.id,
             ));
+
+            if let Some(mgr) = self.conversation_manager.as_ref() {
+                mgr.set_active(&session.id);
+            }
 
             session
         };

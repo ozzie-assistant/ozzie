@@ -164,6 +164,10 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone())
             .with_bus(bus.clone() as Arc<dyn ozzie_core::events::EventBus>),
     );
+    conversation_registry.bootstrap_active_from_store().await;
+    if let Some(active) = conversation_registry.active() {
+        info!(conversation_id = %active, "bootstrap: resumed active conversation");
+    }
     native::register_conversation_tools(
         &tool_registry,
         conversation_registry.clone() as Arc<dyn ozzie_core::domain::ConversationManager>,

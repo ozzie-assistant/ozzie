@@ -44,6 +44,25 @@ impl ConversationRegistry {
         self
     }
 
+    /// Promotes the most recently updated non-archived conversation as active.
+    ///
+    /// Called once at boot so the user's focus survives gateway restarts.
+    /// Silently skips if the store is empty or errors.
+    pub async fn bootstrap_active_from_store(&self) {
+        let Ok(conversations) = self.store.list().await else {
+            return;
+        };
+        let mut candidates: Vec<_> = conversations
+            .into_iter()
+            .filter(|c| matches!(c.status, ConversationStatus::Active))
+            .collect();
+        candidates.sort_by_key(|c| std::cmp::Reverse(c.updated_at));
+        if let Some(most_recent) = candidates.first() {
+            let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
+            *guard = Some(most_recent.id.clone());
+        }
+    }
+
     fn publish(&self, payload: EventPayload, conversation_id: &str) {
         if let Some(bus) = &self.bus {
             bus.publish(Event::with_session(EventSource::Agent, payload, conversation_id));
