@@ -1,4 +1,5 @@
 mod activate;
+mod conversation;
 mod editor;
 mod execute;
 mod file;
@@ -15,6 +16,9 @@ mod web;
 mod yield_control;
 
 pub use activate::ActivateTool;
+pub use conversation::{
+    CloseConversationTool, ListConversationsTool, NewConversationTool, SwitchConversationTool,
+};
 pub use editor::StrReplaceEditorTool;
 pub use execute::ExecuteTool;
 pub use file::{FileReadTool, FileWriteTool, GlobTool, GrepTool, ListDirTool};
@@ -161,6 +165,33 @@ pub fn register_session_tools(
         registry,
         Box::new(UpdateSessionTool::new(store)),
         UpdateSessionTool::spec(),
+    );
+}
+
+/// Registers the four conversation control tools (new / switch / list / close).
+pub fn register_conversation_tools(
+    registry: &ToolRegistry,
+    manager: std::sync::Arc<dyn ozzie_core::domain::ConversationManager>,
+) {
+    register(
+        registry,
+        Box::new(NewConversationTool::new(manager.clone())),
+        NewConversationTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(SwitchConversationTool::new(manager.clone())),
+        SwitchConversationTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(ListConversationsTool::new(manager.clone())),
+        ListConversationsTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(CloseConversationTool::new(manager)),
+        CloseConversationTool::spec(),
     );
 }
 

@@ -159,13 +159,20 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         info!(count = cfg.sub_agents.0.len(), "sub-agent tools registered");
     }
 
+    let sessions_dyn = sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>;
+    let conversation_registry = Arc::new(
+        ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone())
+            .with_bus(bus.clone() as Arc<dyn ozzie_core::events::EventBus>),
+    );
+    native::register_conversation_tools(
+        &tool_registry,
+        conversation_registry.clone() as Arc<dyn ozzie_core::domain::ConversationManager>,
+    );
+
     let tools = tool_registry.all_tools();
     info!(count = tools.len(), "total tools registered");
 
     let actor_infos = actor_pool.available_actors();
-    let sessions_dyn = sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>;
-    let conversation_registry =
-        Arc::new(ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone()));
     let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
         bus: bus.clone(),
         sessions: sessions_dyn,

@@ -34,6 +34,15 @@ pub enum EventKind {
     SessionClosed,
     #[serde(rename = "session.clear")]
     SessionClear,
+    // Conversations (agent-visible lifecycle)
+    #[serde(rename = "conversation.created")]
+    ConversationCreated,
+    #[serde(rename = "conversation.archived")]
+    ConversationArchived,
+    #[serde(rename = "conversation.switched")]
+    ConversationSwitched,
+    #[serde(rename = "conversation.unread")]
+    ConversationUnread,
     // LLM internals
     #[serde(rename = "internal.llm.call")]
     LlmCall,
@@ -111,6 +120,10 @@ impl EventKind {
             Self::SessionCreated => "session.created",
             Self::SessionClosed => "session.closed",
             Self::SessionClear => "session.clear",
+            Self::ConversationCreated => "conversation.created",
+            Self::ConversationArchived => "conversation.archived",
+            Self::ConversationSwitched => "conversation.switched",
+            Self::ConversationUnread => "conversation.unread",
             Self::LlmCall => "internal.llm.call",
             Self::IncomingMessage => "incoming.message",
             Self::OutgoingMessage => "outgoing.message",

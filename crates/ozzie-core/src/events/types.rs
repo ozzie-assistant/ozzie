@@ -157,6 +157,28 @@ pub enum EventPayload {
         channel_id: String,
     },
 
+    // Conversation registry lifecycle
+    #[serde(rename = "conversation.created")]
+    ConversationCreated {
+        conversation_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
+    #[serde(rename = "conversation.archived")]
+    ConversationArchived { conversation_id: String },
+    #[serde(rename = "conversation.switched")]
+    ConversationSwitched {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
+        to: String,
+    },
+    #[serde(rename = "conversation.unread")]
+    ConversationUnread {
+        conversation_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_event_kind: Option<String>,
+    },
+
     // Flow control
     #[serde(rename = "agent.cancelled")]
     AgentCancelled { reason: String },
@@ -281,6 +303,10 @@ impl EventPayload {
             Self::ConnectorAddReaction { .. } => EventKind::ConnectorAddReaction,
             Self::ConnectorClearReactions { .. } => EventKind::ConnectorClearReactions,
             Self::SessionClear { .. } => EventKind::SessionClear,
+            Self::ConversationCreated { .. } => EventKind::ConversationCreated,
+            Self::ConversationArchived { .. } => EventKind::ConversationArchived,
+            Self::ConversationSwitched { .. } => EventKind::ConversationSwitched,
+            Self::ConversationUnread { .. } => EventKind::ConversationUnread,
             Self::AgentCancelled { .. } => EventKind::AgentCancelled,
             Self::AgentYielded { .. } => EventKind::AgentYielded,
             Self::ScheduleTrigger { .. } => EventKind::ScheduleTrigger,

@@ -1,22 +1,15 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use dashmap::DashMap;
 
 use crate::conversation_runtime::ConversationRuntime;
-use ozzie_core::domain::{Conversation, ConversationError, ConversationStatus, ConversationStore};
-
-/// Read-only view of a conversation for listing.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ConversationSummary {
-    pub id: String,
-    pub title: Option<String>,
-    pub status: ConversationStatus,
-    pub message_count: usize,
-    pub updated_at: DateTime<Utc>,
-    pub is_active: bool,
-}
+use ozzie_core::domain::{
+    Conversation, ConversationError, ConversationManager, ConversationStatus, ConversationStore,
+    ConversationSummary,
+};
+use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 
 /// Runtime registry for conversations.
 ///
@@ -32,6 +25,7 @@ pub struct ConversationRegistry {
     store: Arc<dyn ConversationStore>,
     runtimes: DashMap<String, Arc<ConversationRuntime>>,
     active_id: RwLock<Option<String>>,
+    bus: Option<Arc<dyn EventBus>>,
 }
 
 impl ConversationRegistry {
@@ -40,6 +34,19 @@ impl ConversationRegistry {
             store,
             runtimes: DashMap::new(),
             active_id: RwLock::new(None),
+            bus: None,
+        }
+    }
+
+    /// Attaches an event bus so registry mutations emit observable events.
+    pub fn with_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
+        self.bus = Some(bus);
+        self
+    }
+
+    fn publish(&self, payload: EventPayload, conversation_id: &str) {
+        if let Some(bus) = &self.bus {
+            bus.publish(Event::with_session(EventSource::Agent, payload, conversation_id));
         }
     }
 
@@ -71,10 +78,23 @@ impl ConversationRegistry {
     /// Sets the active conversation explicitly. Returns the previous active id.
     ///
     /// Does not verify the conversation exists — caller is responsible.
+    /// Emits `ConversationSwitched` when the active id actually changes.
     pub fn set_active(&self, id: &str) -> Option<String> {
-        let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
-        let previous = guard.clone();
-        *guard = Some(id.to_string());
+        let previous = {
+            let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
+            let previous = guard.clone();
+            *guard = Some(id.to_string());
+            previous
+        };
+        if previous.as_deref() != Some(id) {
+            self.publish(
+                EventPayload::ConversationSwitched {
+                    from: previous.clone(),
+                    to: id.to_string(),
+                },
+                id,
+            );
+        }
         previous
     }
 
@@ -87,20 +107,32 @@ impl ConversationRegistry {
     /// Marks a conversation as last-touched (becomes active).
     ///
     /// Returns the previous active id if it changed, `None` otherwise.
+    /// Emits `ConversationSwitched` when the active id actually changes.
     pub fn touch(&self, id: &str) -> Option<String> {
-        let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
-        match guard.as_deref() {
-            Some(cur) if cur == id => None,
-            _ => {
-                let previous = guard.clone();
-                *guard = Some(id.to_string());
-                previous
+        let previous = {
+            let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
+            match guard.as_deref() {
+                Some(cur) if cur == id => return None,
+                _ => {
+                    let previous = guard.clone();
+                    *guard = Some(id.to_string());
+                    previous
+                }
             }
-        }
+        };
+        self.publish(
+            EventPayload::ConversationSwitched {
+                from: previous.clone(),
+                to: id.to_string(),
+            },
+            id,
+        );
+        previous
     }
 
     /// Creates a new conversation in the store and sets it as active.
     ///
+    /// Emits `ConversationCreated` and `ConversationSwitched`.
     /// Returns the new conversation id.
     pub async fn create_conversation(
         &self,
@@ -108,8 +140,15 @@ impl ConversationRegistry {
     ) -> Result<String, ConversationError> {
         let id = self.generate_id();
         let mut conversation = Conversation::new(&id);
-        conversation.title = title;
+        conversation.title = title.clone();
         self.store.create(&conversation).await?;
+        self.publish(
+            EventPayload::ConversationCreated {
+                conversation_id: id.clone(),
+                title,
+            },
+            &id,
+        );
         self.set_active(&id);
         Ok(id)
     }
@@ -137,6 +176,8 @@ impl ConversationRegistry {
     ///
     /// If the archived conversation was the active one, active is cleared.
     /// Caller decides what to do next (promote another, create new, etc.).
+    /// Emits `ConversationArchived` (and `ConversationSwitched` to `None` when
+    /// the archived conversation was active).
     pub async fn archive(&self, id: &str) -> Result<(), ConversationError> {
         if let Some(runtime) = self.get_runtime(id)
             && runtime.is_active()
@@ -146,9 +187,29 @@ impl ConversationRegistry {
             )));
         }
         self.store.archive(id).await?;
-        let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
-        if guard.as_deref() == Some(id) {
-            *guard = None;
+        let was_active = {
+            let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
+            if guard.as_deref() == Some(id) {
+                *guard = None;
+                true
+            } else {
+                false
+            }
+        };
+        self.publish(
+            EventPayload::ConversationArchived {
+                conversation_id: id.to_string(),
+            },
+            id,
+        );
+        if was_active {
+            self.publish(
+                EventPayload::ConversationSwitched {
+                    from: Some(id.to_string()),
+                    to: String::new(),
+                },
+                id,
+            );
         }
         Ok(())
     }
@@ -170,6 +231,29 @@ impl ConversationRegistry {
     fn generate_id(&self) -> String {
         let runtimes = &self.runtimes;
         ozzie_utils::names::generate_id("sess", |candidate| runtimes.contains_key(candidate))
+    }
+}
+
+#[async_trait::async_trait]
+impl ConversationManager for ConversationRegistry {
+    fn active(&self) -> Option<String> {
+        ConversationRegistry::active(self)
+    }
+
+    fn set_active(&self, id: &str) -> Option<String> {
+        ConversationRegistry::set_active(self, id)
+    }
+
+    async fn create(&self, title: Option<String>) -> Result<String, ConversationError> {
+        self.create_conversation(title).await
+    }
+
+    async fn list(&self) -> Result<Vec<ConversationSummary>, ConversationError> {
+        ConversationRegistry::list(self).await
+    }
+
+    async fn archive(&self, id: &str) -> Result<(), ConversationError> {
+        ConversationRegistry::archive(self, id).await
     }
 }
 

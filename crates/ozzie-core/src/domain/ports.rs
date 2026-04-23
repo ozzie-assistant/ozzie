@@ -132,6 +132,35 @@ pub trait ToolLookup: Send + Sync {
     fn tool_names(&self) -> Vec<String>;
 }
 
+// ---- Conversation Registry Port ----
+
+/// Runtime interface for the conversation registry.
+///
+/// Exposes the operations LLM tools and user-facing RPCs need: create,
+/// switch (via `set_active`), list, archive. Adapters (currently
+/// `ConversationRegistry` in ozzie-runtime) are free to manage runtime
+/// state, event emission, and last-touched semantics.
+#[async_trait::async_trait]
+pub trait ConversationManager: Send + Sync {
+    /// Returns the currently active conversation id, if any.
+    fn active(&self) -> Option<String>;
+
+    /// Sets the active conversation explicitly. Returns the previous active id.
+    fn set_active(&self, id: &str) -> Option<String>;
+
+    /// Creates a new conversation and sets it as active.
+    async fn create(
+        &self,
+        title: Option<String>,
+    ) -> Result<String, super::ConversationError>;
+
+    /// Lists all conversations (sorted by updated_at desc).
+    async fn list(&self) -> Result<Vec<super::ConversationSummary>, super::ConversationError>;
+
+    /// Archives a conversation (freeze + hide, history preserved).
+    async fn archive(&self, id: &str) -> Result<(), super::ConversationError>;
+}
+
 // ---- Runner Ports ----
 
 /// Options for runner creation.

@@ -157,3 +157,14 @@ pub enum ConversationError {
     #[error("{0}")]
     Other(String),
 }
+
+/// Read-only view of a conversation for listing purposes.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConversationSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub status: ConversationStatus,
+    pub message_count: usize,
+    pub updated_at: DateTime<Utc>,
+    pub is_active: bool,
+}

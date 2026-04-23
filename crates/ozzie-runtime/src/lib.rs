@@ -34,7 +34,7 @@ pub use json_pairing_store::JsonPairingStore;
 pub use pairing_manager::{PairingManager, PendingRequestSummary};
 pub use context_compressor::LayeredContextCompressor;
 pub use conversation::{Conversation, ConversationStatus, ConversationStore, ConversationTokenUsage};
-pub use conversation_registry::{ConversationRegistry, ConversationSummary};
+pub use conversation_registry::ConversationRegistry;
 pub use conversation_runtime::ConversationRuntime;
 pub use layered_store::FileArchiveStore;
 pub use cost_tracker::CostTracker;
