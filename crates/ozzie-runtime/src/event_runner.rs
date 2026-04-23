@@ -609,52 +609,42 @@ impl EventRunner {
             }
         };
 
-        // Stable session ID derived from identity coordinates
-        let conversation_id = format!(
-            "{}_{}_{}_{}", identity.platform, identity.server_id, identity.channel_id, identity.user_id
+        // Resolve (or create) the conversation bound to this connector coord.
+        let coord_key = format!(
+            "{}:{}:{}:{}",
+            identity.platform, identity.server_id, identity.channel_id, identity.user_id,
         );
-
-        // Create session on first contact; store connector routing info + policy.
-        match self.sessions.get(&conversation_id).await {
-            Ok(Some(mut s)) => {
-                let mut changed = false;
-                if s.policy_name.is_none() {
-                    s.policy_name = Some(policy_name);
-                    changed = true;
-                }
-                if !s.metadata.contains_key("connector") {
-                    s.metadata.insert("connector".to_string(), connector.clone());
-                    s.metadata.insert(
-                        "reply_channel_id".to_string(),
-                        identity.channel_id.clone(),
-                    );
-                    changed = true;
-                }
-                // Always update incoming_message_id for each new message.
-                s.metadata.insert("incoming_message_id".to_string(), message_id.clone());
-                if let Err(e) = self.sessions.update(&s).await {
-                    warn!(conversation_id = %conversation_id, error = %e, "failed to update session metadata");
-                }
-                let _ = changed; // consumed above
-            }
-            Ok(None) => {
-                let mut s = Conversation::new(conversation_id.clone());
-                s.policy_name = Some(policy_name);
-                s.metadata
-                    .insert("connector".to_string(), connector.clone());
-                s.metadata.insert(
-                    "reply_channel_id".to_string(),
-                    identity.channel_id.clone(),
-                );
-                s.metadata.insert("incoming_message_id".to_string(), message_id.clone());
-                if let Err(e) = self.sessions.create(&s).await {
-                    error!(error = %e, "failed to create connector session");
-                    return;
-                }
-            }
+        let conversation_id = match self
+            .conversation_registry
+            .resolve_or_create_for_coord(&coord_key, None)
+            .await
+        {
+            Ok(id) => id,
             Err(e) => {
-                error!(error = %e, "failed to load connector session");
+                error!(error = %e, "failed to resolve conversation for connector coord");
                 return;
+            }
+        };
+
+        // Touch the conversation: for a mono-user agent, an incoming connector
+        // message means the user is paying attention here.
+        self.conversation_registry.touch(&conversation_id);
+
+        // Keep policy + routing metadata on the conversation record.
+        if let Ok(Some(mut s)) = self.sessions.get(&conversation_id).await {
+            if s.policy_name.is_none() {
+                s.policy_name = Some(policy_name);
+            }
+            s.metadata
+                .entry("connector".to_string())
+                .or_insert_with(|| connector.clone());
+            s.metadata
+                .entry("reply_channel_id".to_string())
+                .or_insert_with(|| identity.channel_id.clone());
+            s.metadata
+                .insert("incoming_message_id".to_string(), message_id.clone());
+            if let Err(e) = self.sessions.update(&s).await {
+                warn!(conversation_id = %conversation_id, error = %e, "failed to update conversation metadata");
             }
         }
 

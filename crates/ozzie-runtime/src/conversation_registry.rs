@@ -26,6 +26,10 @@ pub struct ConversationRegistry {
     runtimes: DashMap<String, Arc<ConversationRuntime>>,
     active_id: RwLock<Option<String>>,
     bus: Option<Arc<dyn EventBus>>,
+    /// Binds a connector coordinate (e.g. "discord:server:channel:user") to
+    /// the conversation it feeds into. Persisted implicitly via each
+    /// conversation's `metadata.connector_coord` field.
+    bindings: DashMap<String, String>,
 }
 
 impl ConversationRegistry {
@@ -35,6 +39,7 @@ impl ConversationRegistry {
             runtimes: DashMap::new(),
             active_id: RwLock::new(None),
             bus: None,
+            bindings: DashMap::new(),
         }
     }
 
@@ -44,14 +49,23 @@ impl ConversationRegistry {
         self
     }
 
-    /// Promotes the most recently updated non-archived conversation as active.
+    /// Promotes the most recently updated non-archived conversation as active,
+    /// and rebuilds connector bindings from persisted metadata.
     ///
-    /// Called once at boot so the user's focus survives gateway restarts.
-    /// Silently skips if the store is empty or errors.
+    /// Called once at boot so the user's focus and connector routing survive
+    /// gateway restarts. Silently skips if the store is empty or errors.
     pub async fn bootstrap_active_from_store(&self) {
         let Ok(conversations) = self.store.list().await else {
             return;
         };
+
+        // Rebuild bindings from persisted metadata.
+        for c in &conversations {
+            if let Some(coord) = c.metadata.get("connector_coord") {
+                self.bindings.insert(coord.clone(), c.id.clone());
+            }
+        }
+
         let mut candidates: Vec<_> = conversations
             .into_iter()
             .filter(|c| matches!(c.status, ConversationStatus::Active))
@@ -61,6 +75,57 @@ impl ConversationRegistry {
             let mut guard = self.active_id.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(most_recent.id.clone());
         }
+    }
+
+    /// Resolves (or creates) the conversation bound to a connector coordinate.
+    ///
+    /// On first contact from a coordinate, creates a new conversation, binds it,
+    /// and stores `connector_coord` in its metadata for later rebinding.
+    /// The resolved conversation is NOT touched — the caller decides whether
+    /// this coordinate should steal the active focus.
+    pub async fn resolve_or_create_for_coord(
+        &self,
+        coord_key: &str,
+        title: Option<String>,
+    ) -> Result<String, ConversationError> {
+        if let Some(existing) = self.bindings.get(coord_key) {
+            return Ok(existing.clone());
+        }
+
+        let id = self.generate_id();
+        let mut conversation = Conversation::new(&id);
+        conversation.title = title.clone();
+        conversation
+            .metadata
+            .insert("connector_coord".to_string(), coord_key.to_string());
+        self.store.create(&conversation).await?;
+        self.bindings.insert(coord_key.to_string(), id.clone());
+
+        self.publish(
+            EventPayload::ConversationCreated {
+                conversation_id: id.clone(),
+                title,
+            },
+            &id,
+        );
+        Ok(id)
+    }
+
+    /// Returns the conversation id currently bound to a coordinate, if any.
+    pub fn coord_binding(&self, coord_key: &str) -> Option<String> {
+        self.bindings.get(coord_key).map(|v| v.clone())
+    }
+
+    /// Emits `ConversationUnread` — a hint for connectors to surface a badge
+    /// without polluting the active conversation's history.
+    pub fn mark_unread(&self, conversation_id: &str, last_event_kind: Option<&str>) {
+        self.publish(
+            EventPayload::ConversationUnread {
+                conversation_id: conversation_id.to_string(),
+                last_event_kind: last_event_kind.map(|s| s.to_string()),
+            },
+            conversation_id,
+        );
     }
 
     fn publish(&self, payload: EventPayload, conversation_id: &str) {
@@ -356,6 +421,54 @@ mod tests {
 
         let err = reg.archive(&id).await.unwrap_err();
         assert!(matches!(err, ConversationError::Other(_)));
+    }
+
+    #[tokio::test]
+    async fn resolve_or_create_for_coord_is_idempotent() {
+        let reg = new_registry();
+        let first = reg
+            .resolve_or_create_for_coord("discord:g1:c1:u1", Some("test".into()))
+            .await
+            .unwrap();
+        let second = reg
+            .resolve_or_create_for_coord("discord:g1:c1:u1", None)
+            .await
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(reg.coord_binding("discord:g1:c1:u1").as_deref(), Some(first.as_str()));
+    }
+
+    #[tokio::test]
+    async fn resolve_or_create_for_coord_does_not_touch_active() {
+        let reg = new_registry();
+        // Pre-existing active conversation.
+        let a = reg.create_conversation(Some("main".into())).await.unwrap();
+        assert_eq!(reg.active().as_deref(), Some(a.as_str()));
+
+        // Incoming coord resolves to its own conv, active pointer unchanged.
+        let bound = reg
+            .resolve_or_create_for_coord("discord:g:c:stranger", None)
+            .await
+            .unwrap();
+        assert_ne!(bound, a);
+        assert_eq!(reg.active().as_deref(), Some(a.as_str()));
+    }
+
+    #[tokio::test]
+    async fn bootstrap_rebuilds_bindings_from_metadata() {
+        let store: Arc<dyn ConversationStore> = Arc::new(InMemoryConversationStore::new());
+        // Seed a conversation with a coord in metadata.
+        let mut c = Conversation::new("conv_seed");
+        c.metadata
+            .insert("connector_coord".into(), "discord:g:c:u".into());
+        store.create(&c).await.unwrap();
+
+        let reg = ConversationRegistry::new(store.clone());
+        reg.bootstrap_active_from_store().await;
+        assert_eq!(
+            reg.coord_binding("discord:g:c:u").as_deref(),
+            Some("conv_seed"),
+        );
     }
 
     #[tokio::test]
