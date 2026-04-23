@@ -120,3 +120,65 @@ pub struct CancelledResult {
 pub struct MessagesResult {
     pub messages: Vec<MessagePayload>,
 }
+
+// ---- Conversation control ----
+
+/// Parameters for `new_conversation`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NewConversationParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// Parameters for `switch_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchConversationParams {
+    pub conversation_id: String,
+}
+
+/// Parameters for `list_conversations`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListConversationsParams {
+    #[serde(default)]
+    pub include_archived: bool,
+}
+
+/// Parameters for `close_conversation`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CloseConversationParams {
+    /// Id of the conversation to archive. Defaults to the active one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+}
+
+/// Result for `switch_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchedResult {
+    pub conversation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<String>,
+}
+
+/// Result for `close_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedResult {
+    pub archived: String,
+}
+
+/// Summary of a conversation as returned by `list_conversations`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSummaryDto {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub status: String,
+    pub message_count: usize,
+    pub updated_at: String,
+    pub is_active: bool,
+}
+
+/// Result for `list_conversations`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationsListResult {
+    pub conversations: Vec<ConversationSummaryDto>,
+}

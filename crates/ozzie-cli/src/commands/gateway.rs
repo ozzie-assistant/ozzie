@@ -208,7 +208,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         user_profile,
         blob_store: Some(Arc::new(ozzie_runtime::FsBlobStore::new(ozzie_path()))),
         project_registry: Some(project_registry.clone()),
-        conversation_registry,
+        conversation_registry: conversation_registry.clone(),
     }));
     runner.start();
 
@@ -255,7 +255,12 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     let local_key = ozzie_client::OzzieClient::read_or_generate_key(&ozzie_path());
     info!(key = %local_key, "gateway device key loaded");
 
-    let hub = init_hub(bus.clone(), sessions.clone(), permissions);
+    let hub = init_hub(
+        bus.clone(),
+        sessions.clone(),
+        permissions,
+        conversation_registry.clone() as Arc<dyn ozzie_core::domain::ConversationManager>,
+    );
 
     let state = AppState {
         hub,
@@ -490,6 +495,7 @@ fn init_hub(
     bus: Arc<Bus>,
     sessions: Arc<FileConversationStore>,
     permissions: Arc<ToolPermissions>,
+    conversation_manager: Arc<dyn ozzie_core::domain::ConversationManager>,
 ) -> Arc<Hub> {
     let placeholder = Arc::new(NoopHandler);
     let hub = Hub::new(bus.clone(), placeholder as Arc<dyn HubHandler>);
@@ -500,7 +506,8 @@ fn init_hub(
             sessions as Arc<dyn ozzie_runtime::ConversationStore>,
             hub.clone(),
         )
-        .with_permissions(permissions),
+        .with_permissions(permissions)
+        .with_conversation_manager(conversation_manager),
     );
     hub.set_handler(handler);
     hub

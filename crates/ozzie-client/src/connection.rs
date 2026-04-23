@@ -235,6 +235,79 @@ impl OzzieClient {
         Ok(())
     }
 
+    /// Creates a new conversation and makes it active.
+    pub async fn new_conversation(&mut self, title: Option<&str>) -> Result<String, ClientError> {
+        let mut params = serde_json::json!({});
+        if let Some(t) = title {
+            params["title"] = serde_json::json!(t);
+        }
+        let resp = self.request("new_conversation", params).await?;
+        let id = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("conversation_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        self.conversation_id = Some(id.clone());
+        Ok(id)
+    }
+
+    /// Switches the active conversation. Returns the previous active id if any.
+    pub async fn switch_conversation(
+        &mut self,
+        conversation_id: &str,
+    ) -> Result<Option<String>, ClientError> {
+        let params = serde_json::json!({ "conversation_id": conversation_id });
+        let resp = self.request("switch_conversation", params).await?;
+        let previous = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("previous"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        self.conversation_id = Some(conversation_id.to_string());
+        Ok(previous)
+    }
+
+    /// Lists known conversations (most recent first).
+    pub async fn list_conversations(
+        &mut self,
+        include_archived: bool,
+    ) -> Result<Vec<ozzie_types::ConversationSummaryDto>, ClientError> {
+        let params = serde_json::json!({ "include_archived": include_archived });
+        let resp = self.request("list_conversations", params).await?;
+        let raw = resp
+            .result
+            .ok_or_else(|| ClientError::Other("missing result".into()))?;
+        let parsed: ozzie_types::ConversationsListResult = serde_json::from_value(raw)
+            .map_err(|e| ClientError::Other(format!("parse list result: {e}")))?;
+        Ok(parsed.conversations)
+    }
+
+    /// Archives a conversation. Defaults to the active one when `conversation_id` is `None`.
+    pub async fn close_conversation(
+        &mut self,
+        conversation_id: Option<&str>,
+    ) -> Result<String, ClientError> {
+        let mut params = serde_json::json!({});
+        if let Some(id) = conversation_id {
+            params["conversation_id"] = serde_json::json!(id);
+        }
+        let resp = self.request("close_conversation", params).await?;
+        let id = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("archived"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if self.conversation_id.as_deref() == Some(id.as_str()) {
+            self.conversation_id = None;
+        }
+        Ok(id)
+    }
+
     /// Reads the next frame from the server.
     /// Returns buffered frames first (from request() overflow), then reads from WS.
     pub async fn read_frame(&mut self) -> Result<Frame, ClientError> {

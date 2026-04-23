@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use ozzie_types::{
-    AcceptAllToolsParams, CancelConversationParams, LoadMessagesParams, OpenConversationParams,
+    AcceptAllToolsParams, CancelConversationParams, CloseConversationParams,
+    ListConversationsParams, LoadMessagesParams, NewConversationParams, OpenConversationParams,
     PromptResponseParams, SendConnectorMessageParams, SendMessageParams,
+    SwitchConversationParams,
 };
 
 /// Typed RPC request — each variant carries its own params.
@@ -19,6 +21,10 @@ pub enum Request {
     AcceptAllTools(AcceptAllToolsParams),
     PromptResponse(PromptResponseParams),
     CancelConversation(CancelConversationParams),
+    NewConversation(NewConversationParams),
+    SwitchConversation(SwitchConversationParams),
+    ListConversations(ListConversationsParams),
+    CloseConversation(CloseConversationParams),
 }
 
 impl Request {
@@ -32,6 +38,10 @@ impl Request {
             Self::AcceptAllTools(_) => "accept_all_tools",
             Self::PromptResponse(_) => "prompt_response",
             Self::CancelConversation(_) => "cancel_conversation",
+            Self::NewConversation(_) => "new_conversation",
+            Self::SwitchConversation(_) => "switch_conversation",
+            Self::ListConversations(_) => "list_conversations",
+            Self::CloseConversation(_) => "close_conversation",
         }
     }
 }

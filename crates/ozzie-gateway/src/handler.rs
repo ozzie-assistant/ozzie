@@ -8,7 +8,10 @@ use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_protocol::{error_code, Frame, Request};
 use ozzie_runtime::conversation::{Conversation, ConversationStore};
 use ozzie_types::{
-    AcceptedResult, CancelledResult, MessagePayload, MessagesResult, ConversationResult,
+    AcceptedResult, ArchivedResult, CancelledResult, CloseConversationParams,
+    ConversationResult, ConversationSummaryDto, ConversationsListResult,
+    ListConversationsParams, MessagePayload, MessagesResult, NewConversationParams,
+    SwitchConversationParams, SwitchedResult,
 };
 
 use crate::hub::{Hub, HubHandler};
@@ -24,6 +27,7 @@ pub struct RequestHandler {
     permissions: Option<Arc<ToolPermissions>>,
     cancel_fn: Option<CancelConversationFn>,
     blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
+    conversation_manager: Option<Arc<dyn ozzie_core::domain::ConversationManager>>,
 }
 
 impl RequestHandler {
@@ -39,6 +43,7 @@ impl RequestHandler {
             permissions: None,
             cancel_fn: None,
             blob_store: None,
+            conversation_manager: None,
         }
     }
 
@@ -54,6 +59,14 @@ impl RequestHandler {
 
     pub fn with_cancel_fn(mut self, cancel_fn: CancelConversationFn) -> Self {
         self.cancel_fn = Some(cancel_fn);
+        self
+    }
+
+    pub fn with_conversation_manager(
+        mut self,
+        manager: Arc<dyn ozzie_core::domain::ConversationManager>,
+    ) -> Self {
+        self.conversation_manager = Some(manager);
         self
     }
 }
@@ -83,6 +96,10 @@ impl HubHandler for RequestHandler {
             Request::AcceptAllTools(p) => self.handle_accept_all(&id, p),
             Request::PromptResponse(p) => self.handle_prompt_response(&id, p),
             Request::CancelConversation(p) => self.handle_cancel_session(&id, p),
+            Request::NewConversation(p) => self.handle_new_conversation(&id, p).await,
+            Request::SwitchConversation(p) => self.handle_switch_conversation(&id, p).await,
+            Request::ListConversations(p) => self.handle_list_conversations(&id, p).await,
+            Request::CloseConversation(p) => self.handle_close_conversation(&id, p).await,
         }
     }
 }
@@ -296,6 +313,126 @@ impl RequestHandler {
         ));
 
         Frame::response_ok(req_id, &CancelledResult { cancelled: true })
+    }
+
+    fn manager_not_configured(&self, req_id: &str) -> Frame {
+        Frame::response_err(
+            req_id,
+            error_code::INTERNAL_ERROR,
+            "conversation manager not configured".to_string(),
+        )
+    }
+
+    async fn handle_new_conversation(
+        &self,
+        req_id: &str,
+        p: NewConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        match manager.create(p.title).await {
+            Ok(id) => Frame::response_ok(
+                req_id,
+                &ConversationResult {
+                    conversation_id: id,
+                    root_dir: None,
+                },
+            ),
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("create conversation: {e}"),
+            ),
+        }
+    }
+
+    async fn handle_switch_conversation(
+        &self,
+        req_id: &str,
+        p: SwitchConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        let previous = manager.set_active(&p.conversation_id);
+        Frame::response_ok(
+            req_id,
+            &SwitchedResult {
+                conversation_id: p.conversation_id,
+                previous,
+            },
+        )
+    }
+
+    async fn handle_list_conversations(
+        &self,
+        req_id: &str,
+        p: ListConversationsParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        match manager.list().await {
+            Ok(mut summaries) => {
+                if !p.include_archived {
+                    summaries.retain(|s| {
+                        matches!(
+                            s.status,
+                            ozzie_core::domain::ConversationStatus::Active
+                        )
+                    });
+                }
+                let dto: Vec<ConversationSummaryDto> = summaries
+                    .into_iter()
+                    .map(|s| ConversationSummaryDto {
+                        id: s.id,
+                        title: s.title,
+                        status: s.status.to_string(),
+                        message_count: s.message_count,
+                        updated_at: s.updated_at.to_rfc3339(),
+                        is_active: s.is_active,
+                    })
+                    .collect();
+                Frame::response_ok(req_id, &ConversationsListResult { conversations: dto })
+            }
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("list conversations: {e}"),
+            ),
+        }
+    }
+
+    async fn handle_close_conversation(
+        &self,
+        req_id: &str,
+        p: CloseConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        let id = match p.conversation_id {
+            Some(id) => id,
+            None => match manager.active() {
+                Some(id) => id,
+                None => {
+                    return Frame::response_err(
+                        req_id,
+                        error_code::INVALID_PARAMS,
+                        "no active conversation to close".to_string(),
+                    );
+                }
+            },
+        };
+        match manager.archive(&id).await {
+            Ok(()) => Frame::response_ok(req_id, &ArchivedResult { archived: id }),
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("archive conversation: {e}"),
+            ),
+        }
     }
 }
 
