@@ -13,12 +13,11 @@ use ozzie_core::profile::UserProfile;
 use ozzie_core::prompt::{self, Composer, MemoryInfo};
 use ozzie_llm::{ChatDelta, ChatMessage, Provider, ToolDefinition};
 
-use dashmap::DashMap;
-
+use crate::conversation::{Conversation, ConversationStore};
+use crate::conversation_registry::ConversationRegistry;
+use crate::conversation_runtime::ConversationRuntime;
 use crate::pairing_manager::PairingManager;
 use crate::react::{self, PendingDrain as _, ReactObserver};
-use crate::conversation::{Conversation, ConversationStore};
-use crate::conversation_runtime::ConversationRuntime;
 
 /// Configuration for building an EventRunner with dynamic prompt composition.
 pub struct EventRunnerConfig {
@@ -68,6 +67,8 @@ pub struct EventRunnerConfig {
     pub blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
     /// Project registry for prompt injection when a session has an active project.
     pub project_registry: Option<Arc<ozzie_core::project::ProjectRegistry>>,
+    /// Conversation registry owning per-conversation runtimes and the active id.
+    pub conversation_registry: Arc<ConversationRegistry>,
 }
 
 /// Listens for UserMessage events and runs the LLM, emitting
@@ -88,8 +89,8 @@ pub struct EventRunner {
     compressor: Option<Arc<dyn ContextCompressor>>,
     /// Optional pairing manager for connector message routing and policy resolution.
     pairing_manager: Option<Arc<PairingManager>>,
-    /// Per-session runtime state (cancellation, pending messages, active flag).
-    session_runtimes: Arc<DashMap<String, Arc<ConversationRuntime>>>,
+    /// Conversation registry (runtimes + active_id).
+    conversation_registry: Arc<ConversationRegistry>,
     /// Actor pool for capacity management.
     pool: Option<Arc<ActorPool>>,
     /// Provider name for pool slot acquisition.
@@ -194,7 +195,7 @@ impl EventRunner {
             retriever: config.retriever,
             compressor: config.compressor,
             pairing_manager: config.pairing_manager,
-            session_runtimes: Arc::new(DashMap::new()),
+            conversation_registry: config.conversation_registry,
             pool: config.pool,
             provider_name: config.provider_name,
             context_window: config.context_window,
@@ -210,6 +211,7 @@ impl EventRunner {
         provider: Arc<dyn Provider>,
         system_prompt: String,
     ) -> Self {
+        let conversation_registry = Arc::new(ConversationRegistry::new(sessions.clone()));
         Self {
             bus,
             sessions,
@@ -220,7 +222,7 @@ impl EventRunner {
             retriever: None,
             compressor: None,
             pairing_manager: None,
-            session_runtimes: Arc::new(DashMap::new()),
+            conversation_registry,
             pool: None,
             provider_name: None,
             context_window: None,
@@ -237,24 +239,21 @@ impl EventRunner {
         });
     }
 
-    /// Returns the per-session runtime, creating one if needed.
+    /// Returns the per-conversation runtime, creating one if needed.
     pub fn get_or_create_runtime(&self, session_id: &str) -> Arc<ConversationRuntime> {
-        self.session_runtimes
-            .entry(session_id.to_string())
-            .or_insert_with(|| Arc::new(ConversationRuntime::new()))
-            .clone()
+        self.conversation_registry.get_or_create_runtime(session_id)
     }
 
-    /// Cancels the active ReactLoop for the given session (if any).
+    /// Cancels the active ReactLoop for the given conversation (if any).
     pub fn cancel_session(&self, session_id: &str) {
-        if let Some(rt) = self.session_runtimes.get(session_id) {
+        if let Some(rt) = self.conversation_registry.get_runtime(session_id) {
             rt.cancel();
         }
     }
 
-    /// Returns a reference to the session runtimes map (for gateway integration).
-    pub fn session_runtimes(&self) -> &Arc<DashMap<String, Arc<ConversationRuntime>>> {
-        &self.session_runtimes
+    /// Returns a handle to the conversation registry.
+    pub fn conversation_registry(&self) -> &Arc<ConversationRegistry> {
+        &self.conversation_registry
     }
 
     async fn run_loop(&self) {
@@ -348,7 +347,7 @@ impl EventRunner {
             retriever: self.retriever.clone(),
             compressor: self.compressor.clone(),
             pairing_manager: self.pairing_manager.clone(),
-            session_runtimes: self.session_runtimes.clone(),
+            conversation_registry: self.conversation_registry.clone(),
             pool: self.pool.clone(),
             provider_name: self.provider_name.clone(),
             context_window: self.context_window,
@@ -1539,9 +1538,11 @@ mod tests {
         let mut skill_descs = HashMap::new();
         skill_descs.insert("deploy".to_string(), "Deploy to production".to_string());
 
+        let sessions_dyn = sessions.clone() as Arc<dyn ConversationStore>;
+        let conversation_registry = Arc::new(ConversationRegistry::new(sessions_dyn.clone()));
         let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
             bus: bus.clone(),
-            sessions: sessions.clone() as Arc<dyn ConversationStore>,
+            sessions: sessions_dyn,
             provider: provider.clone(),
             persona: "You are Ozzie.".to_string(),
             agent_instructions: "Be helpful.".to_string(),
@@ -1562,6 +1563,7 @@ mod tests {
             user_profile: None,
             blob_store: None,
             project_registry: None,
+            conversation_registry,
         }));
         runner.start();
 

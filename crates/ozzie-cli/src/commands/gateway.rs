@@ -163,9 +163,12 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
     info!(count = tools.len(), "total tools registered");
 
     let actor_infos = actor_pool.available_actors();
+    let sessions_dyn = sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>;
+    let conversation_registry =
+        Arc::new(ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone()));
     let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
         bus: bus.clone(),
-        sessions: sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
+        sessions: sessions_dyn,
         provider,
         persona,
         agent_instructions: prompt::AGENT_INSTRUCTIONS.to_string(),
@@ -198,6 +201,7 @@ pub async fn run(args: GatewayArgs, _config_path: Option<&str>) -> anyhow::Resul
         user_profile,
         blob_store: Some(Arc::new(ozzie_runtime::FsBlobStore::new(ozzie_path()))),
         project_registry: Some(project_registry.clone()),
+        conversation_registry,
     }));
     runner.start();
 

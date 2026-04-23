@@ -161,9 +161,12 @@ impl TestGateway {
         let blob_store_for_runner = config.blob_store.clone();
 
         // EventRunner — minimal config, no dangerous tool wrapping
+        let sessions_dyn = sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>;
+        let conversation_registry =
+            Arc::new(ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone()));
         let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
             bus: bus.clone(),
-            sessions: sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
+            sessions: sessions_dyn,
             provider: config.provider,
             persona: prompt::DEFAULT_PERSONA.to_string(),
             agent_instructions: prompt::AGENT_INSTRUCTIONS.to_string(),
@@ -184,6 +187,7 @@ impl TestGateway {
             user_profile: None,
             blob_store: blob_store_for_runner,
             project_registry: None,
+            conversation_registry,
         }));
         runner.start();
 
