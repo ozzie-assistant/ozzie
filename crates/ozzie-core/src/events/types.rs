@@ -100,12 +100,6 @@ pub enum EventPayload {
         tokens_output: u64,
     },
 
-    // Conversation lifecycle
-    #[serde(rename = "session.created")]
-    SessionCreated { session_id: String },
-    #[serde(rename = "session.closed")]
-    SessionClosed { session_id: String },
-
     // Connectors
     #[serde(rename = "incoming.message")]
     IncomingMessage,
@@ -150,9 +144,9 @@ pub enum EventPayload {
         channel_id: String,
         message_id: String,
     },
-    #[serde(rename = "session.clear")]
-    SessionClear {
-        session_id: String,
+    #[serde(rename = "conversation.clear")]
+    ConversationClear {
+        conversation_id: String,
         connector: String,
         channel_id: String,
     },
@@ -293,8 +287,6 @@ impl EventPayload {
             Self::PromptRequest { .. } => EventKind::PromptRequest,
             Self::PromptResponse { .. } => EventKind::PromptResponse,
             Self::LlmCall { .. } => EventKind::LlmCall,
-            Self::SessionCreated { .. } => EventKind::SessionCreated,
-            Self::SessionClosed { .. } => EventKind::SessionClosed,
             Self::IncomingMessage => EventKind::IncomingMessage,
             Self::OutgoingMessage => EventKind::OutgoingMessage,
             Self::ConnectorMessage { .. } => EventKind::ConnectorMessage,
@@ -302,7 +294,7 @@ impl EventPayload {
             Self::ConnectorTyping { .. } => EventKind::ConnectorTyping,
             Self::ConnectorAddReaction { .. } => EventKind::ConnectorAddReaction,
             Self::ConnectorClearReactions { .. } => EventKind::ConnectorClearReactions,
-            Self::SessionClear { .. } => EventKind::SessionClear,
+            Self::ConversationClear { .. } => EventKind::ConversationClear,
             Self::ConversationCreated { .. } => EventKind::ConversationCreated,
             Self::ConversationArchived { .. } => EventKind::ConversationArchived,
             Self::ConversationSwitched { .. } => EventKind::ConversationSwitched,
@@ -333,7 +325,7 @@ impl EventPayload {
 pub struct Event {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
+    pub conversation_id: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub source: EventSource,
     #[serde(flatten)]
@@ -371,7 +363,7 @@ impl Event {
     pub fn new(source: EventSource, payload: EventPayload) -> Self {
         Self {
             id: generate_event_id(),
-            session_id: None,
+            conversation_id: None,
             timestamp: Utc::now(),
             source,
             payload,
@@ -382,11 +374,11 @@ impl Event {
     pub fn with_session(
         source: EventSource,
         payload: EventPayload,
-        session_id: impl Into<String>,
+        conversation_id: impl Into<String>,
     ) -> Self {
         Self {
             id: generate_event_id(),
-            session_id: Some(session_id.into()),
+            conversation_id: Some(conversation_id.into()),
             timestamp: Utc::now(),
             source,
             payload,

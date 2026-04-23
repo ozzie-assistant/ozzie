@@ -39,13 +39,13 @@ impl LayeredContextCompressor {
 impl ContextCompressor for LayeredContextCompressor {
     async fn compress(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         history: &[Message],
     ) -> Result<Vec<Message>, CompressionError> {
         let layered_msgs = ozzie_core::layered::to_layered_messages(history);
         let (result_msgs, _stats) = self
             .manager
-            .apply(session_id, &layered_msgs)
+            .apply(conversation_id, &layered_msgs)
             .await
             .map_err(|e| CompressionError::Other(e.to_string()))?;
 

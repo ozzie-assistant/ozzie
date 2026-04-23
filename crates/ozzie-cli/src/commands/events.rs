@@ -59,7 +59,7 @@ pub async fn run(args: EventsArgs) -> anyhow::Result<()> {
             }
             if let Some(ref s) = args.session {
                 let sid = e
-                    .get("session_id")
+                    .get("conversation_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 if sid != s {
@@ -96,7 +96,7 @@ pub async fn run(args: EventsArgs) -> anyhow::Result<()> {
                 .unwrap_or("-")
                 .to_string();
             let session = e
-                .get("session_id")
+                .get("conversation_id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("-")
                 .to_string();

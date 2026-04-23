@@ -2,8 +2,8 @@
 //!
 //! Layout:
 //! ```text
-//! {sessions_dir}/{session_id}/layered/index.json
-//! {sessions_dir}/{session_id}/layered/archives/archive_{id}.json
+//! {sessions_dir}/{conversation_id}/layered/index.json
+//! {sessions_dir}/{conversation_id}/layered/archives/archive_{id}.json
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -29,32 +29,32 @@ impl FileArchiveStore {
         &self.sessions_dir
     }
 
-    fn layered_dir(&self, session_id: &str) -> PathBuf {
-        self.sessions_dir.join(session_id).join("layered")
+    fn layered_dir(&self, conversation_id: &str) -> PathBuf {
+        self.sessions_dir.join(conversation_id).join("layered")
     }
 
-    fn archives_dir(&self, session_id: &str) -> PathBuf {
-        self.layered_dir(session_id).join("archives")
+    fn archives_dir(&self, conversation_id: &str) -> PathBuf {
+        self.layered_dir(conversation_id).join("archives")
     }
 
-    fn index_path(&self, session_id: &str) -> PathBuf {
-        self.layered_dir(session_id).join("index.json")
+    fn index_path(&self, conversation_id: &str) -> PathBuf {
+        self.layered_dir(conversation_id).join("index.json")
     }
 
-    fn archive_path(&self, session_id: &str, node_id: &str) -> PathBuf {
-        self.archives_dir(session_id)
+    fn archive_path(&self, conversation_id: &str, node_id: &str) -> PathBuf {
+        self.archives_dir(conversation_id)
             .join(format!("archive_{node_id}.json"))
     }
 
-    async fn ensure_dirs(&self, session_id: &str) -> std::io::Result<()> {
-        tokio::fs::create_dir_all(self.archives_dir(session_id)).await
+    async fn ensure_dirs(&self, conversation_id: &str) -> std::io::Result<()> {
+        tokio::fs::create_dir_all(self.archives_dir(conversation_id)).await
     }
 }
 
 #[async_trait::async_trait]
 impl ArchiveStore for FileArchiveStore {
-    async fn load_index(&self, session_id: &str) -> Result<Option<Index>, StoreError> {
-        let path = self.index_path(session_id);
+    async fn load_index(&self, conversation_id: &str) -> Result<Option<Index>, StoreError> {
+        let path = self.index_path(conversation_id);
         match tokio::fs::read_to_string(&path).await {
             Ok(data) => {
                 let idx: Index =
@@ -66,15 +66,15 @@ impl ArchiveStore for FileArchiveStore {
         }
     }
 
-    async fn save_index(&self, session_id: &str, idx: &Index) -> Result<(), StoreError> {
-        self.ensure_dirs(session_id)
+    async fn save_index(&self, conversation_id: &str, idx: &Index) -> Result<(), StoreError> {
+        self.ensure_dirs(conversation_id)
             .await
             .map_err(|e| StoreError::Io(e.to_string()))?;
 
         let data =
             serde_json::to_string_pretty(idx).map_err(|e| StoreError::Parse(e.to_string()))?;
 
-        let path = self.index_path(session_id);
+        let path = self.index_path(conversation_id);
         let tmp = path.with_extension("json.tmp");
         tokio::fs::write(&tmp, &data)
             .await
@@ -87,18 +87,18 @@ impl ArchiveStore for FileArchiveStore {
 
     async fn write_archive(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         node_id: &str,
         payload: &ArchivePayload,
     ) -> Result<(), StoreError> {
-        self.ensure_dirs(session_id)
+        self.ensure_dirs(conversation_id)
             .await
             .map_err(|e| StoreError::Io(e.to_string()))?;
 
         let data = serde_json::to_string_pretty(payload)
             .map_err(|e| StoreError::Parse(e.to_string()))?;
 
-        let path = self.archive_path(session_id, node_id);
+        let path = self.archive_path(conversation_id, node_id);
         let tmp = path.with_extension("json.tmp");
         tokio::fs::write(&tmp, &data)
             .await
@@ -111,10 +111,10 @@ impl ArchiveStore for FileArchiveStore {
 
     async fn read_archive(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         node_id: &str,
     ) -> Result<Option<ArchivePayload>, StoreError> {
-        let path = self.archive_path(session_id, node_id);
+        let path = self.archive_path(conversation_id, node_id);
         match tokio::fs::read_to_string(&path).await {
             Ok(data) => {
                 let payload: ArchivePayload =
@@ -128,10 +128,10 @@ impl ArchiveStore for FileArchiveStore {
 
     async fn cleanup_archives(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         valid_node_ids: &[String],
     ) -> Result<(), StoreError> {
-        let dir = self.archives_dir(session_id);
+        let dir = self.archives_dir(conversation_id);
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -171,11 +171,11 @@ mod tests {
 
     // ── Store unit tests ─────────────────────────────────────────────
 
-    fn test_index(session_id: &str) -> Index {
+    fn test_index(conversation_id: &str) -> Index {
         use chrono::Utc;
         Index {
             version: 1,
-            session_id: session_id.to_string(),
+            session_id: conversation_id.to_string(),
             root: Root {
                 id: "root".to_string(),
                 abstract_text: "test abstract".to_string(),

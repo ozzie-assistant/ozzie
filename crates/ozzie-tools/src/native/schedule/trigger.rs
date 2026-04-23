@@ -92,7 +92,7 @@ mod tests {
                         approved_tools: Vec::new(),
                     },
                 },
-                session_id: None,
+                conversation_id: None,
                 title: "Trigger me".to_string(),
                 description: "test".to_string(),
                 cron_spec: Some("0 * * * *".to_string()),

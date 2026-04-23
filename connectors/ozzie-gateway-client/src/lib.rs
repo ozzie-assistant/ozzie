@@ -14,7 +14,7 @@ use std::fmt;
 #[async_trait::async_trait]
 pub trait GatewayClient: Send {
     /// Open or resume a session.
-    async fn open_session(&mut self, opts: OpenSessionOpts) -> Result<SessionInfo>;
+    async fn open_session(&mut self, opts: OpenConversationOpts) -> Result<SessionInfo>;
 
     /// Forward a message from a connector platform to the gateway.
     async fn send_connector_message(&mut self, params: ConnectorMessageParams) -> Result<()>;

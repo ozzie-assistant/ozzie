@@ -30,7 +30,7 @@ struct RpcError {
 }
 
 // JSON-RPC method names — single source of truth for client-side calls.
-const METHOD_OPEN_SESSION: &str = "open_session";
+const METHOD_OPEN_CONVERSATION: &str = "open_conversation";
 const METHOD_SEND_CONNECTOR_MESSAGE: &str = "send_connector_message";
 const METHOD_PROMPT_RESPONSE: &str = "prompt_response";
 const METHOD_ACCEPT_ALL_TOOLS: &str = "accept_all_tools";
@@ -143,10 +143,10 @@ impl WsGatewayClient {
 
 #[async_trait::async_trait]
 impl GatewayClient for WsGatewayClient {
-    async fn open_session(&mut self, opts: OpenSessionOpts) -> Result<SessionInfo> {
+    async fn open_session(&mut self, opts: OpenConversationOpts) -> Result<SessionInfo> {
         let params =
             serde_json::to_value(&opts).map_err(|e| GatewayError::Protocol(e.to_string()))?;
-        let result = self.call(METHOD_OPEN_SESSION, params).await?;
+        let result = self.call(METHOD_OPEN_CONVERSATION, params).await?;
         serde_json::from_value(result)
             .map_err(|e| GatewayError::Protocol(format!("invalid session response: {e}")))
     }

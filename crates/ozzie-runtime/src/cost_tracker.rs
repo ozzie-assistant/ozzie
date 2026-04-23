@@ -52,7 +52,7 @@ impl CostTracker {
     }
 
     async fn handle_event(&self, event: Event) {
-        let session_id = match &event.session_id {
+        let conversation_id = match &event.conversation_id {
             Some(sid) if !sid.is_empty() => sid.clone(),
             _ => return,
         };
@@ -78,14 +78,14 @@ impl CostTracker {
         }
 
         // Load session, accumulate, and persist
-        let mut session = match self.store.get(&session_id).await {
+        let mut session = match self.store.get(&conversation_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
-                debug!(session_id = %session_id, "cost tracker: session not found");
+                debug!(conversation_id = %conversation_id, "cost tracker: session not found");
                 return;
             }
             Err(e) => {
-                debug!(session_id = %session_id, error = %e, "cost tracker: failed to load session");
+                debug!(conversation_id = %conversation_id, error = %e, "cost tracker: failed to load session");
                 return;
             }
         };
@@ -94,7 +94,7 @@ impl CostTracker {
         session.token_usage.output += tokens_output;
 
         if let Err(e) = self.store.update(&session).await {
-            error!(session_id = %session_id, error = %e, "cost tracker: failed to update session");
+            error!(conversation_id = %conversation_id, error = %e, "cost tracker: failed to update session");
         }
     }
 }
@@ -107,7 +107,7 @@ mod tests {
 
     fn publish_llm_event(
         bus: &Arc<dyn EventBus>,
-        session_id: &str,
+        conversation_id: &str,
         phase: &str,
         tokens_in: u64,
         tokens_out: u64,
@@ -119,7 +119,7 @@ mod tests {
                 tokens_input: tokens_in,
                 tokens_output: tokens_out,
             },
-            session_id,
+            conversation_id,
         ));
     }
 

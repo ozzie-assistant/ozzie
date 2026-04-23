@@ -852,7 +852,7 @@ impl DirectSubtaskRunner {
             tools: resolved_tools,
             instruction: full_instruction,
             budget,
-            session_id: Some(caller_ctx.session_id.clone()),
+            conversation_id: Some(caller_ctx.conversation_id.clone()),
             work_dir: work_dir.map(String::from).or(caller_ctx.work_dir),
             ..Default::default()
         };
@@ -891,7 +891,7 @@ impl SubAgentRunner for DirectSubAgentRunner {
         config: &ozzie_core::config::SubAgentConfig,
         task: &str,
         context: Option<&str>,
-        session_id: &str,
+        conversation_id: &str,
         work_dir: Option<&str>,
     ) -> Result<String, ToolError> {
         use ozzie_core::config::ContextMode;
@@ -959,7 +959,7 @@ impl SubAgentRunner for DirectSubAgentRunner {
         // For conversation mode, append conversation history (without system messages)
         let mut messages = vec![Message::user(task)];
         if config.context_mode == ContextMode::Conversation
-            && let Ok(all_msgs) = self.sessions.load_messages(session_id).await
+            && let Ok(all_msgs) = self.sessions.load_messages(conversation_id).await
         {
             let history: Vec<Message> = all_msgs
                 .into_iter()
@@ -993,7 +993,7 @@ impl SubAgentRunner for DirectSubAgentRunner {
             tools: wrapped_tools,
             instruction,
             budget,
-            session_id: Some(session_id.to_string()),
+            conversation_id: Some(conversation_id.to_string()),
             work_dir: work_dir.map(String::from),
             ..Default::default()
         };
@@ -1104,7 +1104,7 @@ impl ozzie_runtime::scheduler::ScheduleHandler for DirectScheduleHandler {
             tools,
             instruction,
             budget,
-            session_id: entry.session_id.clone(),
+            conversation_id: entry.conversation_id.clone(),
             work_dir: template.work_dir.clone(),
             ..Default::default()
         };

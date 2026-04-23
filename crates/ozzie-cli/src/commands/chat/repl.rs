@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Write as IoWrite};
 
 use ozzie_client::{
-    ClientError, EventKind, OpenSessionOpts, OzzieClient, PromptRequestPayload,
+    ClientError, EventKind, OpenConversationOpts, OzzieClient, PromptRequestPayload,
     PromptResponseParams,
 };
 use ozzie_utils::config::ozzie_path;
@@ -15,14 +15,14 @@ pub async fn run(args: ChatArgs) -> anyhow::Result<()> {
     let token = OzzieClient::acquire_token_cli(&args.gateway, &ozzie_path()).await?;
     let mut client = OzzieClient::connect(&args.gateway, Some(&token)).await?;
 
-    let session_id = client
-        .open_session(OpenSessionOpts {
-            session_id: args.session.as_deref(),
+    let conversation_id = client
+        .open_session(OpenConversationOpts {
+            conversation_id: args.session.as_deref(),
             working_dir: args.working_dir.as_deref(),
         })
         .await?;
 
-    eprintln!("Connected — session {session_id}");
+    eprintln!("Connected — session {conversation_id}");
     eprintln!("Type /quit to exit.\n");
 
     if args.accept_all {

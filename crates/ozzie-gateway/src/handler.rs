@@ -8,13 +8,13 @@ use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_protocol::{error_code, Frame, Request};
 use ozzie_runtime::conversation::{Conversation, ConversationStore};
 use ozzie_types::{
-    AcceptedResult, CancelledResult, MessagePayload, MessagesResult, SessionResult,
+    AcceptedResult, CancelledResult, MessagePayload, MessagesResult, ConversationResult,
 };
 
 use crate::hub::{Hub, HubHandler};
 
 /// Callback to cancel a session's active ReactLoop.
-pub type CancelSessionFn = Arc<dyn Fn(&str) + Send + Sync>;
+pub type CancelConversationFn = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Default handler for WS request frames.
 pub struct RequestHandler {
@@ -22,7 +22,7 @@ pub struct RequestHandler {
     sessions: Arc<dyn ConversationStore>,
     hub: Arc<Hub>,
     permissions: Option<Arc<ToolPermissions>>,
-    cancel_fn: Option<CancelSessionFn>,
+    cancel_fn: Option<CancelConversationFn>,
     blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
 }
 
@@ -52,7 +52,7 @@ impl RequestHandler {
         self
     }
 
-    pub fn with_cancel_fn(mut self, cancel_fn: CancelSessionFn) -> Self {
+    pub fn with_cancel_fn(mut self, cancel_fn: CancelConversationFn) -> Self {
         self.cancel_fn = Some(cancel_fn);
         self
     }
@@ -76,13 +76,13 @@ impl HubHandler for RequestHandler {
         };
 
         match request {
-            Request::OpenSession(p) => self.handle_open_session(client_id, &id, p).await,
+            Request::OpenConversation(p) => self.handle_open_session(client_id, &id, p).await,
             Request::SendMessage(p) => self.handle_send_message(&id, p).await,
             Request::SendConnectorMessage(p) => self.handle_send_connector_message(&id, p),
             Request::LoadMessages(p) => self.handle_load_messages(&id, p).await,
             Request::AcceptAllTools(p) => self.handle_accept_all(&id, p),
             Request::PromptResponse(p) => self.handle_prompt_response(&id, p),
-            Request::CancelSession(p) => self.handle_cancel_session(&id, p),
+            Request::CancelConversation(p) => self.handle_cancel_session(&id, p),
         }
     }
 }
@@ -92,9 +92,9 @@ impl RequestHandler {
         &self,
         client_id: u64,
         req_id: &str,
-        p: ozzie_types::OpenSessionParams,
+        p: ozzie_types::OpenConversationParams,
     ) -> Frame {
-        let session = if let Some(sid) = &p.session_id {
+        let session = if let Some(sid) = &p.conversation_id {
             match self.sessions.get(sid).await {
                 Ok(Some(s)) => s,
                 Ok(None) => {
@@ -130,8 +130,9 @@ impl RequestHandler {
 
             self.bus.publish(Event::with_session(
                 EventSource::Hub,
-                EventPayload::SessionCreated {
-                    session_id: session.id.clone(),
+                EventPayload::ConversationCreated {
+                    conversation_id: session.id.clone(),
+                    title: session.title.clone(),
                 },
                 &session.id,
             ));
@@ -140,12 +141,12 @@ impl RequestHandler {
         };
 
         self.hub.bind_session(client_id, &session.id);
-        info!(session_id = %session.id, "session opened");
+        info!(conversation_id = %session.id, "session opened");
 
         Frame::response_ok(
             req_id,
-            &SessionResult {
-                session_id: session.id,
+            &ConversationResult {
+                conversation_id: session.id,
                 root_dir: session.root_dir,
             },
         )
@@ -180,7 +181,7 @@ impl RequestHandler {
         self.bus.publish(Event::with_session(
             EventSource::Hub,
             EventPayload::user_message_with_images(p.text, images),
-            &p.session_id,
+            &p.conversation_id,
         ));
 
         Frame::response_ok(req_id, &AcceptedResult { accepted: true })
@@ -221,7 +222,7 @@ impl RequestHandler {
     ) -> Frame {
         let limit = p.limit.min(50) as usize;
 
-        let messages = match self.sessions.load_messages(&p.session_id).await {
+        let messages = match self.sessions.load_messages(&p.conversation_id).await {
             Ok(msgs) => msgs,
             Err(e) => {
                 return Frame::response_err(
@@ -254,7 +255,7 @@ impl RequestHandler {
         p: ozzie_types::AcceptAllToolsParams,
     ) -> Frame {
         if let Some(ref perms) = self.permissions {
-            perms.allow_all_for_session(&p.session_id);
+            perms.allow_all_for_session(&p.conversation_id);
         }
 
         Frame::response_ok(req_id, &AcceptedResult { accepted: true })
@@ -280,10 +281,10 @@ impl RequestHandler {
     fn handle_cancel_session(
         &self,
         req_id: &str,
-        p: ozzie_types::CancelSessionParams,
+        p: ozzie_types::CancelConversationParams,
     ) -> Frame {
         if let Some(ref cancel) = self.cancel_fn {
-            cancel(&p.session_id);
+            cancel(&p.conversation_id);
         }
 
         self.bus.publish(Event::with_session(
@@ -291,7 +292,7 @@ impl RequestHandler {
             EventPayload::AgentCancelled {
                 reason: "user_request".to_string(),
             },
-            &p.session_id,
+            &p.conversation_id,
         ));
 
         Frame::response_ok(req_id, &CancelledResult { cancelled: true })
@@ -333,7 +334,7 @@ mod tests {
         let frame = Frame::request(
             "r1",
             "send_message",
-            &serde_json::json!({"session_id": "sess_1", "text": "hello"}),
+            &serde_json::json!({"conversation_id": "sess_1", "text": "hello"}),
         );
         let resp = handler.handle_request(0, frame).await;
 
@@ -434,14 +435,14 @@ mod tests {
     async fn open_session_creates_session() {
         let (handler, _bus) = make_handler();
 
-        let frame = Frame::request("r1", "open_session", &serde_json::json!({}));
+        let frame = Frame::request("r1", "open_conversation", &serde_json::json!({}));
         let resp = handler.handle_request(0, frame).await;
 
         assert!(!resp.is_error());
         let sid = resp
             .result
             .as_ref()
-            .and_then(|r| r.get("session_id"))
+            .and_then(|r| r.get("conversation_id"))
             .and_then(|v| v.as_str());
         assert!(sid.is_some());
         assert!(sid.unwrap().starts_with("sess_"));

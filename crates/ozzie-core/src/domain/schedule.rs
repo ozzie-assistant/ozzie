@@ -103,7 +103,7 @@ pub struct ScheduleEntry {
     #[serde(flatten)]
     pub source: ScheduleSource,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
+    pub conversation_id: Option<String>,
     pub title: String,
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

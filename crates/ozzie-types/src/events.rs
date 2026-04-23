@@ -94,24 +94,18 @@ pub struct LlmCallEvent {
     pub tokens_output: u64,
 }
 
-// ---- Sessions ----
+// ---- Conversations ----
 
 /// Conversation created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionCreatedEvent {
-    pub session_id: String,
-}
-
-/// Conversation closed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionClosedEvent {
-    pub session_id: String,
+pub struct ConversationCreatedEvent {
+    pub conversation_id: String,
 }
 
 /// Conversation history cleared.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionClearEvent {
-    pub session_id: String,
+pub struct ConversationClearEvent {
+    pub conversation_id: String,
     pub connector: String,
     pub channel_id: String,
 }

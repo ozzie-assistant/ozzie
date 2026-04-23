@@ -1,6 +1,6 @@
 //! Persists bus events to JSONL files organized by session.
 //!
-//! Writes to `{dir}/{session_id}.jsonl`, one line per event.
+//! Writes to `{dir}/{conversation_id}.jsonl`, one line per event.
 //! Events without a session ID go to `_global.jsonl`.
 //! Streaming deltas (AssistantStream) are filtered out to avoid noise.
 
@@ -49,7 +49,7 @@ impl EventLogger {
 fn write_event(dir: &std::path::Path, event: &Event) -> std::io::Result<()> {
     let data = serde_json::to_string(event)?;
 
-    let filename = match &event.session_id {
+    let filename = match &event.conversation_id {
         Some(sid) if !sid.is_empty() => format!("{sid}.jsonl"),
         _ => "_global.jsonl".to_string(),
     };

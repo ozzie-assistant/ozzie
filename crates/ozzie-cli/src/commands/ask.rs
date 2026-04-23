@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Write as IoWrite};
 
 use clap::Args;
-use ozzie_client::{ClientError, EventKind, OzzieClient, OpenSessionOpts, PromptRequestPayload, PromptResponseParams};
+use ozzie_client::{ClientError, EventKind, OzzieClient, OpenConversationOpts, PromptRequestPayload, PromptResponseParams};
 use ozzie_utils::config::ozzie_path;
 
 /// Send a message and stream the response.
@@ -40,13 +40,13 @@ pub async fn run(args: AskArgs) -> anyhow::Result<()> {
     let mut client = OzzieClient::connect(&args.gateway, Some(&token)).await?;
 
     // Open or resume session
-    let session_id = client
-        .open_session(OpenSessionOpts {
-            session_id: args.session.as_deref(),
+    let conversation_id = client
+        .open_session(OpenConversationOpts {
+            conversation_id: args.session.as_deref(),
             working_dir: args.working_dir.as_deref(),
         })
         .await?;
-    eprintln!("session: {session_id}");
+    eprintln!("session: {conversation_id}");
 
     // Accept all tools if requested
     if args.accept_all {

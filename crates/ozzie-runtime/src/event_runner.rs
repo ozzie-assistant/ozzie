@@ -240,13 +240,13 @@ impl EventRunner {
     }
 
     /// Returns the per-conversation runtime, creating one if needed.
-    pub fn get_or_create_runtime(&self, session_id: &str) -> Arc<ConversationRuntime> {
-        self.conversation_registry.get_or_create_runtime(session_id)
+    pub fn get_or_create_runtime(&self, conversation_id: &str) -> Arc<ConversationRuntime> {
+        self.conversation_registry.get_or_create_runtime(conversation_id)
     }
 
     /// Cancels the active ReactLoop for the given conversation (if any).
-    pub fn cancel_session(&self, session_id: &str) {
-        if let Some(rt) = self.conversation_registry.get_runtime(session_id) {
+    pub fn cancel_session(&self, conversation_id: &str) {
+        if let Some(rt) = self.conversation_registry.get_runtime(conversation_id) {
             rt.cancel();
         }
     }
@@ -257,7 +257,7 @@ impl EventRunner {
     }
 
     async fn run_loop(&self) {
-        let mut rx = self.bus.subscribe(&[EventKind::UserMessage.as_str(), EventKind::ConnectorMessage.as_str(), EventKind::SessionClear.as_str()]);
+        let mut rx = self.bus.subscribe(&[EventKind::UserMessage.as_str(), EventKind::ConnectorMessage.as_str(), EventKind::ConversationClear.as_str()]);
         info!("event runner started");
 
         loop {
@@ -270,10 +270,10 @@ impl EventRunner {
                         tokio::spawn(async move {
                             runner.handle_connector_message(event).await;
                         });
-                    } else if matches!(&event.payload, EventPayload::SessionClear { .. }) {
+                    } else if matches!(&event.payload, EventPayload::ConversationClear { .. }) {
                         let runner = self.clone_ref();
                         tokio::spawn(async move {
-                            runner.handle_session_clear(event).await;
+                            runner.handle_conversation_clear(event).await;
                         });
                     }
                 }
@@ -290,7 +290,7 @@ impl EventRunner {
 
     /// Dispatches a user message: buffers if session is busy, spawns handler otherwise.
     fn dispatch_user_message(&self, event: Event) {
-        let session_id = match &event.session_id {
+        let conversation_id = match &event.conversation_id {
             Some(sid) => sid.clone(),
             None => return,
         };
@@ -302,11 +302,11 @@ impl EventRunner {
             return;
         }
 
-        let runtime = self.get_or_create_runtime(&session_id);
+        let runtime = self.get_or_create_runtime(&conversation_id);
 
         if runtime.is_active() {
             // Conversation busy — buffer message for next turn
-            debug!(session_id = %session_id, "session active, buffering user message");
+            debug!(conversation_id = %conversation_id, "session active, buffering user message");
             runtime.push_pending(text);
         } else {
             // Conversation idle — start processing (reset clears stale cancel tokens)
@@ -314,7 +314,7 @@ impl EventRunner {
             runtime.set_active(true);
             let runner = self.clone_ref();
             let rt = runtime.clone();
-            let sid = session_id.clone();
+            let sid = conversation_id.clone();
             tokio::spawn(async move {
                 runner.handle_user_message(event, rt.clone()).await;
                 rt.set_active(false);
@@ -323,7 +323,7 @@ impl EventRunner {
                 // If pending messages exist, re-publish them so run_loop picks them up.
                 let pending = rt.drain();
                 if !pending.is_empty() {
-                    debug!(session_id = %sid, count = pending.len(), "re-publishing buffered messages after loop end");
+                    debug!(conversation_id = %sid, count = pending.len(), "re-publishing buffered messages after loop end");
                     for text in pending {
                         runner.bus.publish(Event::with_session(
                             EventSource::Hub,
@@ -610,12 +610,12 @@ impl EventRunner {
         };
 
         // Stable session ID derived from identity coordinates
-        let session_id = format!(
+        let conversation_id = format!(
             "{}_{}_{}_{}", identity.platform, identity.server_id, identity.channel_id, identity.user_id
         );
 
         // Create session on first contact; store connector routing info + policy.
-        match self.sessions.get(&session_id).await {
+        match self.sessions.get(&conversation_id).await {
             Ok(Some(mut s)) => {
                 let mut changed = false;
                 if s.policy_name.is_none() {
@@ -633,12 +633,12 @@ impl EventRunner {
                 // Always update incoming_message_id for each new message.
                 s.metadata.insert("incoming_message_id".to_string(), message_id.clone());
                 if let Err(e) = self.sessions.update(&s).await {
-                    warn!(session_id = %session_id, error = %e, "failed to update session metadata");
+                    warn!(conversation_id = %conversation_id, error = %e, "failed to update session metadata");
                 }
                 let _ = changed; // consumed above
             }
             Ok(None) => {
-                let mut s = Conversation::new(session_id.clone());
+                let mut s = Conversation::new(conversation_id.clone());
                 s.policy_name = Some(policy_name);
                 s.metadata
                     .insert("connector".to_string(), connector.clone());
@@ -682,48 +682,48 @@ impl EventRunner {
         self.bus.publish(Event::with_session(
             EventSource::Connector,
             EventPayload::user_message(content),
-            &session_id,
+            &conversation_id,
         ));
     }
 
-    /// Handles `session.clear`: advances `history_start_index` so future LLM calls
+    /// Handles `conversation.clear`: advances `history_start_index` so future LLM calls
     /// skip old messages. The messages file is kept intact on disk for audit/logging.
-    async fn handle_session_clear(&self, event: Event) {
-        let (session_id, connector, channel_id) = match &event.payload {
-            EventPayload::SessionClear {
-                session_id,
+    async fn handle_conversation_clear(&self, event: Event) {
+        let (conversation_id, connector, channel_id) = match &event.payload {
+            EventPayload::ConversationClear {
+                conversation_id,
                 connector,
                 channel_id,
-            } => (session_id.clone(), connector.clone(), channel_id.clone()),
+            } => (conversation_id.clone(), connector.clone(), channel_id.clone()),
             _ => return,
         };
 
         // Load current message count to set as the new history start.
-        let start_index = match self.sessions.load_messages(&session_id).await {
+        let start_index = match self.sessions.load_messages(&conversation_id).await {
             Ok(msgs) => msgs.len(),
             Err(_) => 0,
         };
 
         // Update session metadata to record where the new conversation starts.
-        match self.sessions.get(&session_id).await {
+        match self.sessions.get(&conversation_id).await {
             Ok(Some(mut session)) => {
                 session
                     .metadata
                     .insert("history_start_index".to_string(), start_index.to_string());
                 session.updated_at = chrono::Utc::now();
                 if let Err(e) = self.sessions.update(&session).await {
-                    warn!(session_id = %session_id, error = %e, "failed to update session metadata");
+                    warn!(conversation_id = %conversation_id, error = %e, "failed to update session metadata");
                 }
             }
             Ok(None) => {
                 // Conversation not yet created — nothing to clear, reply anyway.
             }
             Err(e) => {
-                warn!(session_id = %session_id, error = %e, "failed to load session for clear");
+                warn!(conversation_id = %conversation_id, error = %e, "failed to load session for clear");
             }
         }
 
-        info!(session_id = %session_id, history_start_index = %start_index, "conversation cleared");
+        info!(conversation_id = %conversation_id, history_start_index = %start_index, "conversation cleared");
 
         self.bus.publish(Event::new(
             EventSource::Agent,
@@ -738,10 +738,10 @@ impl EventRunner {
     }
 
     async fn handle_user_message(&self, event: Event, runtime: Arc<ConversationRuntime>) {
-        let session_id = match &event.session_id {
+        let conversation_id = match &event.conversation_id {
             Some(sid) => sid.clone(),
             None => {
-                warn!("user message without session_id");
+                warn!("user message without conversation_id");
                 return;
             }
         };
@@ -755,29 +755,29 @@ impl EventRunner {
             return;
         }
 
-        debug!(session_id = %session_id, images = images.len(), "processing user message");
+        debug!(conversation_id = %conversation_id, images = images.len(), "processing user message");
 
         // Persist user message
         let user_msg = Message::user(&content);
-        if let Err(e) = self.sessions.append_message(&session_id, user_msg).await {
+        if let Err(e) = self.sessions.append_message(&conversation_id, user_msg).await {
             error!(error = %e, "failed to persist user message");
         }
 
         // Load session for dynamic prompt composition
-        let session = match self.sessions.get(&session_id).await {
+        let session = match self.sessions.get(&conversation_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
-                warn!(session_id = %session_id, "session not found");
-                Conversation::new(session_id.clone())
+                warn!(conversation_id = %conversation_id, "session not found");
+                Conversation::new(conversation_id.clone())
             }
             Err(e) => {
                 error!(error = %e, "failed to load session");
-                Conversation::new(session_id.clone())
+                Conversation::new(conversation_id.clone())
             }
         };
 
         // Load conversation history, applying /clear offset if set.
-        let history = match self.sessions.load_messages(&session_id).await {
+        let history = match self.sessions.load_messages(&conversation_id).await {
             Ok(msgs) => {
                 let start = session
                     .metadata
@@ -793,17 +793,17 @@ impl EventRunner {
             }
             Err(e) => {
                 error!(error = %e, "failed to load messages");
-                self.emit_error(&session_id, &format!("failed to load history: {e}"));
+                self.emit_error(&conversation_id, &format!("failed to load history: {e}"));
                 return;
             }
         };
 
         // Compress conversation history if a compressor is configured
         let history = if let Some(ref compressor) = self.compressor {
-            match compressor.compress(&session_id, &history).await {
+            match compressor.compress(&conversation_id, &history).await {
                 Ok(compressed) => {
                     debug!(
-                        session_id = %session_id,
+                        conversation_id = %conversation_id,
                         original = history.len(),
                         compressed = compressed.len(),
                         "context compressed"
@@ -872,10 +872,10 @@ impl EventRunner {
                 })
                 .is_some_and(|p| p.git_auto_commit);
 
-            self.process_with_tools(&session_id, chat_messages, &session_tools, &session_tool_defs, session.root_dir.clone(), git_auto_commit, &runtime)
+            self.process_with_tools(&conversation_id, chat_messages, &session_tools, &session_tool_defs, session.root_dir.clone(), git_auto_commit, &runtime)
                 .await;
         } else {
-            self.process_without_tools(&session_id, chat_messages).await;
+            self.process_without_tools(&conversation_id, chat_messages).await;
         }
     }
 
@@ -907,7 +907,7 @@ impl EventRunner {
     #[allow(clippy::too_many_arguments)]
     async fn process_with_tools(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         chat_messages: Vec<ChatMessage>,
         tools: &[Arc<dyn Tool>],
         _tool_defs: &[ToolDefinition],
@@ -920,7 +920,7 @@ impl EventRunner {
             match pool.acquire(pname).await {
                 Ok(slot) => Some((pool.clone(), slot)),
                 Err(e) => {
-                    warn!(session_id, error = %e, "failed to acquire actor slot, proceeding without");
+                    warn!(conversation_id, error = %e, "failed to acquire actor slot, proceeding without");
                     None
                 }
             }
@@ -929,12 +929,12 @@ impl EventRunner {
         };
 
         // Emit stream start
-        self.emit_stream(session_id, "start", "", 0);
+        self.emit_stream(conversation_id, "start", "", 0);
 
         let observer = Arc::new(EventRunnerObserver {
             bus: self.bus.clone(),
             sessions: self.sessions.clone(),
-            session_id: session_id.to_string(),
+            conversation_id: conversation_id.to_string(),
         });
 
         let budget = react::TurnBudget::default();
@@ -945,7 +945,7 @@ impl EventRunner {
             instruction: String::new(), // already in chat_messages
             budget,
             observer: Some(observer),
-            session_id: Some(session_id.to_string()),
+            conversation_id: Some(conversation_id.to_string()),
             work_dir,
             pending_source: Some(runtime.clone() as Arc<dyn react::PendingDrain>),
             cancel_token: Some(runtime.cancel_token().clone()),
@@ -958,26 +958,26 @@ impl EventRunner {
 
         match result {
             react::ReactResult::Completed(r) => {
-                self.emit_stream(session_id, "end", "", 0);
-                self.finalize_response(session_id, &r.content).await;
+                self.emit_stream(conversation_id, "end", "", 0);
+                self.finalize_response(conversation_id, &r.content).await;
             }
             react::ReactResult::BudgetExhausted(r) => {
-                self.emit_stream(session_id, "end", "", 0);
-                self.finalize_response(session_id, &r.content).await;
+                self.emit_stream(conversation_id, "end", "", 0);
+                self.finalize_response(conversation_id, &r.content).await;
             }
             react::ReactResult::Cancelled { turns, reason } => {
-                info!(session_id = %session_id, turns, reason = %reason, "react loop cancelled");
-                self.emit_stream(session_id, "end", "", 0);
-                self.finalize_response(session_id, "[cancelled by user]").await;
+                info!(conversation_id = %conversation_id, turns, reason = %reason, "react loop cancelled");
+                self.emit_stream(conversation_id, "end", "", 0);
+                self.finalize_response(conversation_id, "[cancelled by user]").await;
             }
             react::ReactResult::Yielded { turns, reason, .. } => {
-                info!(session_id = %session_id, turns, reason = %reason, "react loop yielded");
-                self.emit_stream(session_id, "end", "", 0);
-                self.finalize_response(session_id, &format!("[yielded: {reason}]")).await;
+                info!(conversation_id = %conversation_id, turns, reason = %reason, "react loop yielded");
+                self.emit_stream(conversation_id, "end", "", 0);
+                self.finalize_response(conversation_id, &format!("[yielded: {reason}]")).await;
             }
             react::ReactResult::Error(e) => {
                 error!(error = %e, "react loop error");
-                self.emit_error(session_id, &format!("react loop error: {e}"));
+                self.emit_error(conversation_id, &format!("react loop error: {e}"));
             }
         }
 
@@ -988,28 +988,28 @@ impl EventRunner {
     }
 
     /// Processes a message without tools (streaming or buffered).
-    async fn process_without_tools(&self, session_id: &str, chat_messages: Vec<ChatMessage>) {
+    async fn process_without_tools(&self, conversation_id: &str, chat_messages: Vec<ChatMessage>) {
         // Try streaming first, fall back to buffered
         match self.provider.chat_stream(&chat_messages, &[]).await {
             Ok(stream) => {
-                self.process_stream(session_id, stream).await;
+                self.process_stream(conversation_id, stream).await;
             }
             Err(e) => {
                 debug!(error = %e, "streaming not available, falling back to buffered");
-                self.process_buffered(session_id, &chat_messages).await;
+                self.process_buffered(conversation_id, &chat_messages).await;
             }
         }
     }
 
     async fn process_stream(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         stream: std::pin::Pin<
             Box<dyn futures_core::Stream<Item = Result<ChatDelta, ozzie_llm::LlmError>> + Send>,
         >,
     ) {
         // Emit stream start
-        self.emit_stream(session_id, "start", "", 0);
+        self.emit_stream(conversation_id, "start", "", 0);
 
         let mut full_content = String::new();
         let mut index = 0u64;
@@ -1020,11 +1020,11 @@ impl EventRunner {
                 Ok(ChatDelta::Content(text)) => {
                     full_content.push_str(&text);
                     index += 1;
-                    self.emit_stream(session_id, "delta", &text, index);
+                    self.emit_stream(conversation_id, "delta", &text, index);
                 }
                 Ok(ChatDelta::Done { usage, .. }) => {
                     self.emit_llm_call(
-                        session_id,
+                        conversation_id,
                         "response",
                         usage.input_tokens,
                         usage.output_tokens,
@@ -1036,58 +1036,58 @@ impl EventRunner {
                 }
                 Err(e) => {
                     error!(error = %e, "stream error");
-                    self.emit_error(session_id, &format!("stream error: {e}"));
+                    self.emit_error(conversation_id, &format!("stream error: {e}"));
                     return;
                 }
             }
         }
 
         // Emit stream end
-        self.emit_stream(session_id, "end", "", index + 1);
+        self.emit_stream(conversation_id, "end", "", index + 1);
 
         // Persist and emit final message
-        self.finalize_response(session_id, &full_content).await;
+        self.finalize_response(conversation_id, &full_content).await;
     }
 
-    async fn process_buffered(&self, session_id: &str, messages: &[ChatMessage]) {
+    async fn process_buffered(&self, conversation_id: &str, messages: &[ChatMessage]) {
         match self.provider.chat(messages, &[]).await {
             Ok(response) => {
                 // Emit LLM call event for cost tracking
                 self.emit_llm_call(
-                    session_id,
+                    conversation_id,
                     "response",
                     response.usage.input_tokens,
                     response.usage.output_tokens,
                 );
 
                 // Emit as a single stream sequence
-                self.emit_stream(session_id, "start", "", 0);
+                self.emit_stream(conversation_id, "start", "", 0);
                 if !response.content.is_empty() {
-                    self.emit_stream(session_id, "delta", &response.content, 1);
+                    self.emit_stream(conversation_id, "delta", &response.content, 1);
                 }
-                self.emit_stream(session_id, "end", "", 2);
+                self.emit_stream(conversation_id, "end", "", 2);
 
-                self.finalize_response(session_id, &response.content).await;
+                self.finalize_response(conversation_id, &response.content).await;
             }
             Err(e) => {
                 error!(error = %e, "LLM call failed");
-                self.emit_error(session_id, &format!("LLM error: {e}"));
+                self.emit_error(conversation_id, &format!("LLM error: {e}"));
             }
         }
     }
 
-    async fn finalize_response(&self, session_id: &str, content: &str) {
+    async fn finalize_response(&self, conversation_id: &str, content: &str) {
         // Persist assistant message
         if !content.is_empty() {
             let msg = Message::assistant(content);
-            if let Err(e) = self.sessions.append_message(session_id, msg).await {
+            if let Err(e) = self.sessions.append_message(conversation_id, msg).await {
                 error!(error = %e, "failed to persist assistant message");
             }
         }
 
         // Update session message_count from persisted messages
-        if let Ok(Some(mut session)) = self.sessions.get(session_id).await
-            && let Ok(msgs) = self.sessions.load_messages(session_id).await
+        if let Ok(Some(mut session)) = self.sessions.get(conversation_id).await
+            && let Ok(msgs) = self.sessions.load_messages(conversation_id).await
         {
             session.message_count = msgs.len();
             session.updated_at = chrono::Utc::now();
@@ -1103,12 +1103,12 @@ impl EventRunner {
                 content: content.to_string(),
                 error: None,
             },
-            session_id,
+            conversation_id,
         ));
 
         // If this session was initiated by a connector, route the response back.
         if !content.is_empty() {
-            match self.sessions.get(session_id).await {
+            match self.sessions.get(conversation_id).await {
                 Ok(Some(session)) => {
                     match (
                         session.metadata.get("connector"),
@@ -1116,7 +1116,7 @@ impl EventRunner {
                     ) {
                         (Some(connector), Some(channel_id)) => {
                             info!(
-                                session_id = %session_id,
+                                conversation_id = %conversation_id,
                                 connector = %connector,
                                 "routing response to connector"
                             );
@@ -1145,23 +1145,23 @@ impl EventRunner {
                             ));
                         }
                         _ => {
-                            debug!(session_id = %session_id, "no connector routing info in session");
+                            debug!(conversation_id = %conversation_id, "no connector routing info in session");
                         }
                     }
                 }
                 Ok(None) => {
-                    debug!(session_id = %session_id, "session not found for connector routing");
+                    debug!(conversation_id = %conversation_id, "session not found for connector routing");
                 }
                 Err(e) => {
-                    warn!(session_id = %session_id, error = %e, "failed to load session for connector routing");
+                    warn!(conversation_id = %conversation_id, error = %e, "failed to load session for connector routing");
                 }
             }
         }
 
-        info!(session_id = %session_id, len = content.len(), "response complete");
+        info!(conversation_id = %conversation_id, len = content.len(), "response complete");
     }
 
-    fn emit_stream(&self, session_id: &str, phase: &str, content: &str, index: u64) {
+    fn emit_stream(&self, conversation_id: &str, phase: &str, content: &str, index: u64) {
         self.bus.publish(Event::with_session(
             EventSource::Agent,
             EventPayload::AssistantStream {
@@ -1169,7 +1169,7 @@ impl EventRunner {
                 content: content.to_string(),
                 index,
             },
-            session_id,
+            conversation_id,
         ));
     }
 
@@ -1196,7 +1196,7 @@ impl EventRunner {
     /// Emits an internal.llm.call event for cost tracking.
     fn emit_llm_call(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         phase: &str,
         tokens_input: u64,
         tokens_output: u64,
@@ -1208,18 +1208,18 @@ impl EventRunner {
                 tokens_input,
                 tokens_output,
             },
-            session_id,
+            conversation_id,
         ));
     }
 
-    fn emit_error(&self, session_id: &str, message: &str) {
+    fn emit_error(&self, conversation_id: &str, message: &str) {
         self.bus.publish(Event::with_session(
             EventSource::Agent,
             EventPayload::AssistantMessage {
                 content: String::new(),
                 error: Some(message.to_string()),
             },
-            session_id,
+            conversation_id,
         ));
     }
 }
@@ -1231,7 +1231,7 @@ impl EventRunner {
 struct EventRunnerObserver {
     bus: Arc<dyn EventBus>,
     sessions: Arc<dyn ConversationStore>,
-    session_id: String,
+    conversation_id: String,
 }
 
 #[async_trait::async_trait]
@@ -1244,7 +1244,7 @@ impl ReactObserver for EventRunnerObserver {
                 tokens_input: input_tokens,
                 tokens_output: output_tokens,
             },
-            &self.session_id,
+            &self.conversation_id,
         ));
     }
 
@@ -1256,7 +1256,7 @@ impl ReactObserver for EventRunnerObserver {
                 content: content.to_string(),
                 index,
             },
-            &self.session_id,
+            &self.conversation_id,
         ));
     }
 
@@ -1268,7 +1268,7 @@ impl ReactObserver for EventRunnerObserver {
                 tool: tool.to_string(),
                 arguments: arguments.to_string(),
             },
-            &self.session_id,
+            &self.conversation_id,
         ));
     }
 
@@ -1281,21 +1281,21 @@ impl ReactObserver for EventRunnerObserver {
                 result: result.to_string(),
                 is_error,
             },
-            &self.session_id,
+            &self.conversation_id,
         ));
     }
 
     async fn on_pending_drained(&self, text: &str) {
         // Persist the buffered user message
         let msg = Message::user(text);
-        if let Err(e) = self.sessions.append_message(&self.session_id, msg).await {
+        if let Err(e) = self.sessions.append_message(&self.conversation_id, msg).await {
             error!(error = %e, "failed to persist buffered user message");
         }
     }
 
     async fn on_tool_pre_execute(&self, tool_name: &str) {
         // Update connector status reaction if this session is connector-initiated
-        if let Ok(Some(s)) = self.sessions.get(&self.session_id).await
+        if let Ok(Some(s)) = self.sessions.get(&self.conversation_id).await
             && let (Some(conn), Some(ch), Some(msg_id)) = (
                 s.metadata.get("connector"),
                 s.metadata.get("reply_channel_id"),
@@ -1317,7 +1317,7 @@ impl ReactObserver for EventRunnerObserver {
 
     fn progress_sender(&self) -> Option<ozzie_core::domain::ProgressSender> {
         let bus = self.bus.clone();
-        let session_id = self.session_id.clone();
+        let conversation_id = self.conversation_id.clone();
         Some(Arc::new(move |p: ozzie_core::domain::ToolProgress| {
             bus.publish(Event::with_session(
                 EventSource::Agent,
@@ -1326,7 +1326,7 @@ impl ReactObserver for EventRunnerObserver {
                     tool: p.tool,
                     message: p.message,
                 },
-                &session_id,
+                &conversation_id,
             ));
         }))
     }

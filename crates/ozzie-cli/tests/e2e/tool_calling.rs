@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ozzie_client::OpenSessionOpts;
+use ozzie_client::OpenConversationOpts;
 use ozzie_protocol::EventKind;
 use ozzie_tools::ToolRegistry;
 
@@ -33,8 +33,8 @@ async fn single_tool_file_read() {
 
     let mut client = gw.connect().await;
     client
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: Some(gw.work_dir().to_str().unwrap()),
         })
         .await
@@ -77,8 +77,8 @@ async fn multi_step_write_then_read() {
 
     let mut client = gw.connect().await;
     client
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: Some(gw.work_dir().to_str().unwrap()),
         })
         .await

@@ -27,7 +27,7 @@ pub type ProgressSender = std::sync::Arc<dyn Fn(ToolProgress) + Send + Sync>;
 #[derive(Clone, Default)]
 pub struct ToolContext {
     /// Active session ID (empty if unknown).
-    pub session_id: String,
+    pub conversation_id: String,
     /// Per-tool constraints from task config (empty = no constraints).
     pub tool_constraints: HashMap<String, crate::events::ToolConstraint>,
     /// Working directory for resolving relative paths in tool calls.
@@ -43,7 +43,7 @@ pub struct ToolContext {
 impl std::fmt::Debug for ToolContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolContext")
-            .field("session_id", &self.session_id)
+            .field("conversation_id", &self.conversation_id)
             .field("work_dir", &self.work_dir)
             .field("subtask_depth", &self.subtask_depth)
             .field("progress", &self.progress.is_some())
@@ -221,7 +221,7 @@ pub use worm_memory::{
 pub trait ContextCompressor: Send + Sync {
     async fn compress(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         history: &[Message],
     ) -> Result<Vec<Message>, CompressionError>;
 }
@@ -283,7 +283,7 @@ pub trait SubAgentRunner: Send + Sync {
         config: &crate::config::SubAgentConfig,
         task: &str,
         context: Option<&str>,
-        session_id: &str,
+        conversation_id: &str,
         work_dir: Option<&str>,
     ) -> Result<String, ToolError>;
 }
@@ -300,7 +300,7 @@ pub trait SkillExecutor: Send + Sync {
 
 /// Seeds per-session tool permissions.
 pub trait ToolPermissionsSeeder: Send + Sync {
-    fn allow_for_session(&self, session_id: &str, tool_name: &str);
+    fn allow_for_session(&self, conversation_id: &str, tool_name: &str);
 }
 
 // ---- Pairing Ports ----

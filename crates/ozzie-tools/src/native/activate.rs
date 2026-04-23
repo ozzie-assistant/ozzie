@@ -85,12 +85,12 @@ impl Tool for ActivateTool {
     }
 
     async fn run(&self, arguments_json: &str) -> Result<String, ToolError> {
-        // Get session_id from task-local context
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        // Get conversation_id from task-local context
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .map_err(|_| ToolError::Execution("activate: no session in context".to_string()))?;
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             return Err(ToolError::Execution(
                 "activate: no session in context".to_string(),
             ));
@@ -113,7 +113,7 @@ impl Tool for ActivateTool {
         for name in &input.names {
             // Try tool first
             if self.tool_set.is_known(name) {
-                if self.tool_set.activate(&session_id, name) {
+                if self.tool_set.activate(&conversation_id, name) {
                     let desc = self.tool_registry.spec(name).map(|s| s.description);
                     output.activated.push(ActivatedEntry {
                         name: name.clone(),
@@ -142,7 +142,7 @@ impl Tool for ActivateTool {
                 // Activate allowed tools from the skill
                 for tool_name in &skill.allowed_tools {
                     if self.tool_set.is_known(tool_name)
-                        && self.tool_set.activate(&session_id, tool_name)
+                        && self.tool_set.activate(&conversation_id, tool_name)
                     {
                         activated_tools.push(tool_name.clone());
                     }
@@ -151,7 +151,7 @@ impl Tool for ActivateTool {
                 // Auto-activate run_workflow if the skill has a workflow
                 if has_workflow
                     && self.tool_set.is_known("run_workflow")
-                    && self.tool_set.activate(&session_id, "run_workflow")
+                    && self.tool_set.activate(&conversation_id, "run_workflow")
                 {
                     activated_tools.push("run_workflow".to_string());
                 }
@@ -293,13 +293,13 @@ mod tests {
     }
 
     /// Helper to run a test inside TOOL_CTX scope.
-    async fn with_session<F, Fut>(session_id: &str, f: F) -> Result<String, ToolError>
+    async fn with_session<F, Fut>(conversation_id: &str, f: F) -> Result<String, ToolError>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<String, ToolError>>,
     {
         let ctx = ozzie_core::domain::ToolContext {
-            session_id: session_id.to_string(),
+            conversation_id: conversation_id.to_string(),
             ..Default::default()
         };
         TOOL_CTX.scope(ctx, f()).await

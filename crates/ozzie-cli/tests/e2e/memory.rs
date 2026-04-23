@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ozzie_client::OpenSessionOpts;
+use ozzie_client::OpenConversationOpts;
 use ozzie_core::domain::MemoryStore;
 use ozzie_memory::MarkdownStore;
 use ozzie_tools::ToolRegistry;
@@ -36,8 +36,8 @@ async fn store_and_query_memory() {
     // Conversation 1: store a memory
     let mut client = gw.connect().await;
     client
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: None,
         })
         .await
@@ -62,8 +62,8 @@ async fn store_and_query_memory() {
     // Conversation 2: query the memory
     let mut client2 = gw.connect().await;
     client2
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: None,
         })
         .await

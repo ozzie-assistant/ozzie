@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use ozzie_types::{
-    AcceptAllToolsParams, CancelSessionParams, LoadMessagesParams, OpenSessionParams,
+    AcceptAllToolsParams, CancelConversationParams, LoadMessagesParams, OpenConversationParams,
     PromptResponseParams, SendConnectorMessageParams, SendMessageParams,
 };
 
@@ -12,26 +12,26 @@ use ozzie_types::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "snake_case")]
 pub enum Request {
-    OpenSession(OpenSessionParams),
+    OpenConversation(OpenConversationParams),
     SendMessage(SendMessageParams),
     SendConnectorMessage(SendConnectorMessageParams),
     LoadMessages(LoadMessagesParams),
     AcceptAllTools(AcceptAllToolsParams),
     PromptResponse(PromptResponseParams),
-    CancelSession(CancelSessionParams),
+    CancelConversation(CancelConversationParams),
 }
 
 impl Request {
     /// Returns the wire method name for this request variant.
     pub fn method_name(&self) -> &'static str {
         match self {
-            Self::OpenSession(_) => "open_session",
+            Self::OpenConversation(_) => "open_conversation",
             Self::SendMessage(_) => "send_message",
             Self::SendConnectorMessage(_) => "send_connector_message",
             Self::LoadMessages(_) => "load_messages",
             Self::AcceptAllTools(_) => "accept_all_tools",
             Self::PromptResponse(_) => "prompt_response",
-            Self::CancelSession(_) => "cancel_session",
+            Self::CancelConversation(_) => "cancel_conversation",
         }
     }
 }
@@ -43,14 +43,14 @@ mod tests {
     #[test]
     fn request_serde_roundtrip() {
         let req = Request::SendMessage(SendMessageParams {
-            session_id: "sess_1".to_string(),
+            conversation_id: "conv_1".to_string(),
             text: "hello".to_string(),
             images: Vec::new(),
         });
 
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["method"], "send_message");
-        assert_eq!(json["params"]["session_id"], "sess_1");
+        assert_eq!(json["params"]["conversation_id"], "conv_1");
         assert_eq!(json["params"]["text"], "hello");
 
         let parsed: Request = serde_json::from_value(json).unwrap();
@@ -58,33 +58,33 @@ mod tests {
     }
 
     #[test]
-    fn open_session_with_defaults() {
+    fn open_conversation_with_defaults() {
         let json = serde_json::json!({
-            "method": "open_session",
+            "method": "open_conversation",
             "params": {}
         });
         let req: Request = serde_json::from_value(json).unwrap();
         match req {
-            Request::OpenSession(p) => {
-                assert!(p.session_id.is_none());
+            Request::OpenConversation(p) => {
+                assert!(p.conversation_id.is_none());
                 assert!(p.working_dir.is_none());
             }
-            _ => panic!("expected OpenSession"),
+            _ => panic!("expected OpenConversation"),
         }
     }
 
     #[test]
-    fn cancel_session_parse() {
+    fn cancel_conversation_parse() {
         let json = serde_json::json!({
-            "method": "cancel_session",
-            "params": { "session_id": "sess_xyz" }
+            "method": "cancel_conversation",
+            "params": { "conversation_id": "conv_xyz" }
         });
         let req: Request = serde_json::from_value(json).unwrap();
         match req {
-            Request::CancelSession(p) => {
-                assert_eq!(p.session_id, "sess_xyz");
+            Request::CancelConversation(p) => {
+                assert_eq!(p.conversation_id, "conv_xyz");
             }
-            _ => panic!("expected CancelSession"),
+            _ => panic!("expected CancelConversation"),
         }
     }
 
@@ -115,10 +115,10 @@ mod tests {
     #[test]
     fn method_name_matches_wire() {
         let variants = vec![
-            (Request::OpenSession(Default::default()), "open_session"),
-            (Request::SendMessage(SendMessageParams { session_id: String::new(), text: String::new(), images: Vec::new() }), "send_message"),
+            (Request::OpenConversation(Default::default()), "open_conversation"),
+            (Request::SendMessage(SendMessageParams { conversation_id: String::new(), text: String::new(), images: Vec::new() }), "send_message"),
             (Request::SendConnectorMessage(SendConnectorMessageParams { connector: String::new(), channel_id: String::new(), author: String::new(), content: String::new(), message_id: None, server_id: None }), "send_connector_message"),
-            (Request::CancelSession(CancelSessionParams { session_id: String::new() }), "cancel_session"),
+            (Request::CancelConversation(CancelConversationParams { conversation_id: String::new() }), "cancel_conversation"),
         ];
         for (req, expected) in variants {
             assert_eq!(req.method_name(), expected);

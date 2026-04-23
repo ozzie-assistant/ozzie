@@ -27,14 +27,7 @@ pub enum EventKind {
     PromptRequest,
     #[serde(rename = "prompt.response")]
     PromptResponse,
-    // Sessions
-    #[serde(rename = "session.created")]
-    SessionCreated,
-    #[serde(rename = "session.closed")]
-    SessionClosed,
-    #[serde(rename = "session.clear")]
-    SessionClear,
-    // Conversations (agent-visible lifecycle)
+    // Conversations
     #[serde(rename = "conversation.created")]
     ConversationCreated,
     #[serde(rename = "conversation.archived")]
@@ -43,6 +36,8 @@ pub enum EventKind {
     ConversationSwitched,
     #[serde(rename = "conversation.unread")]
     ConversationUnread,
+    #[serde(rename = "conversation.clear")]
+    ConversationClear,
     // LLM internals
     #[serde(rename = "internal.llm.call")]
     LlmCall,
@@ -117,13 +112,11 @@ impl EventKind {
             Self::ToolResult => "tool.result",
             Self::PromptRequest => "prompt.request",
             Self::PromptResponse => "prompt.response",
-            Self::SessionCreated => "session.created",
-            Self::SessionClosed => "session.closed",
-            Self::SessionClear => "session.clear",
             Self::ConversationCreated => "conversation.created",
             Self::ConversationArchived => "conversation.archived",
             Self::ConversationSwitched => "conversation.switched",
             Self::ConversationUnread => "conversation.unread",
+            Self::ConversationClear => "conversation.clear",
             Self::LlmCall => "internal.llm.call",
             Self::IncomingMessage => "incoming.message",
             Self::OutgoingMessage => "outgoing.message",
@@ -179,7 +172,7 @@ mod tests {
             EventKind::ToolCall,
             EventKind::PromptRequest,
             EventKind::PromptResponse,
-            EventKind::SessionCreated,
+            EventKind::ConversationCreated,
             EventKind::AgentCancelled,
             EventKind::AgentYielded,
             EventKind::SkillStepStarted,

@@ -163,9 +163,7 @@ fn translate_frame(frame: &ozzie_client::Frame) -> Option<ServerEvent> {
                     options: prompt.options,
                 })
             }
-            Some(EventKind::AgentYielded) | Some(EventKind::SessionClosed) => {
-                Some(ServerEvent::AgentDone)
-            }
+            Some(EventKind::AgentYielded) => Some(ServerEvent::AgentDone),
             Some(EventKind::AgentCancelled) => {
                 let reason = frame
                     .params

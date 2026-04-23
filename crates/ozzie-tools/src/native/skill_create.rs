@@ -167,17 +167,17 @@ impl Tool for CreateSkillTool {
 impl CreateSkillTool {
     /// Resolves the active project for the current session, if any.
     async fn resolve_active_project(&self) -> Result<Option<(String, String)>, ToolError> {
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .unwrap_or_default();
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             return Ok(None);
         }
 
         let session = self
             .session_store
-            .get(&session_id)
+            .get(&conversation_id)
             .await
             .map_err(|e| ToolError::Execution(format!("get session: {e}")))?;
 

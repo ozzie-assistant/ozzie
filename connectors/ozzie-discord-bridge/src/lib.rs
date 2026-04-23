@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ozzie_gateway_client::{
-    ConnectorMessageParams, GatewayClient, GatewayError, Notification, OpenSessionOpts,
+    ConnectorMessageParams, GatewayClient, GatewayError, Notification, OpenConversationOpts,
     PromptResponseParams, WsGatewayClient,
 };
 use serenity::all::{
@@ -181,16 +181,16 @@ impl DiscordBridge {
         loop {
             tokio::select! {
                 Some(msg) = inbound_rx.recv() => {
-                    let session_id = if let Some(sid) = channel_sessions.get(&msg.channel_id) {
+                    let conversation_id = if let Some(sid) = channel_sessions.get(&msg.channel_id) {
                         sid.clone()
                     } else {
-                        match gateway.open_session(OpenSessionOpts::default()).await {
+                        match gateway.open_session(OpenConversationOpts::default()).await {
                             Ok(info) => {
                                 if let Err(e) = gateway.accept_all_tools().await {
                                     warn!(error = %e, "failed to accept all tools");
                                 }
-                                channel_sessions.insert(msg.channel_id.clone(), info.session_id.clone());
-                                info.session_id
+                                channel_sessions.insert(msg.channel_id.clone(), info.conversation_id.clone());
+                                info.conversation_id
                             }
                             Err(e) => {
                                 warn!(error = %e, "failed to open session");
@@ -199,7 +199,7 @@ impl DiscordBridge {
                         }
                     };
 
-                    debug!(channel = %msg.channel_id, session = %session_id, "forwarding to gateway");
+                    debug!(channel = %msg.channel_id, session = %conversation_id, "forwarding to gateway");
 
                     if let Err(e) = gateway
                         .send_connector_message(ConnectorMessageParams {

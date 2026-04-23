@@ -8,9 +8,9 @@ use crate::output;
 
 /// Conversation management commands.
 #[derive(Args)]
-pub struct SessionsArgs {
+pub struct ConversationsArgs {
     #[command(subcommand)]
-    command: SessionsCommand,
+    command: ConversationsCommand,
 
     /// Output as JSON.
     #[arg(long, global = true)]
@@ -18,7 +18,7 @@ pub struct SessionsArgs {
 }
 
 #[derive(Subcommand)]
-enum SessionsCommand {
+enum ConversationsCommand {
     /// List all sessions.
     List,
     /// Show session details.
@@ -28,13 +28,13 @@ enum SessionsCommand {
     },
 }
 
-pub async fn run(args: SessionsArgs) -> anyhow::Result<()> {
+pub async fn run(args: ConversationsArgs) -> anyhow::Result<()> {
     let sessions_dir = sessions_path();
     let store = FileConversationStore::new(&sessions_dir)?;
 
     match args.command {
-        SessionsCommand::List => list(&store, args.json).await,
-        SessionsCommand::Show { id } => show(&store, &id, args.json).await,
+        ConversationsCommand::List => list(&store, args.json).await,
+        ConversationsCommand::Show { id } => show(&store, &id, args.json).await,
     }
 }
 

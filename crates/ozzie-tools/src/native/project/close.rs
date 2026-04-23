@@ -57,20 +57,20 @@ impl Tool for CloseProjectTool {
     }
 
     async fn run(&self, _arguments_json: &str) -> Result<String, ToolError> {
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .unwrap_or_default();
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             return Err(ToolError::Execution("no session in context".to_string()));
         }
 
         let mut session = self
             .session_store
-            .get(&session_id)
+            .get(&conversation_id)
             .await
             .map_err(|e| ToolError::Execution(format!("get session: {e}")))?
-            .ok_or_else(|| ToolError::Execution(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| ToolError::Execution(format!("session not found: {conversation_id}")))?;
 
         let project_name = session
             .project_id

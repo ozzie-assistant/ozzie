@@ -228,10 +228,10 @@ async fn events(
     };
 
     // Optional session filter (client-side)
-    let filtered: Vec<_> = if let Some(ref session_id) = query.session {
+    let filtered: Vec<_> = if let Some(ref conversation_id) = query.session {
         events
             .into_iter()
-            .filter(|e| e.session_id.as_deref() == Some(session_id.as_str()))
+            .filter(|e| e.conversation_id.as_deref() == Some(conversation_id.as_str()))
             .collect()
     } else {
         events
@@ -244,7 +244,7 @@ async fn events(
                 "id": e.id,
                 "type": e.event_type(),
                 "source": e.source,
-                "session_id": e.session_id,
+                "conversation_id": e.conversation_id,
                 "timestamp": e.timestamp,
                 "payload": e.payload,
             })

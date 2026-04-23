@@ -163,7 +163,7 @@ impl DreamRunner {
                     records.insert(session.id.clone(), record.clone());
                     if let Err(e) = record_store.save(&record) {
                         error!(
-                            session_id = %session.id,
+                            conversation_id = %session.id,
                             error = %e,
                             "dream: failed to save record"
                         );
@@ -174,7 +174,7 @@ impl DreamRunner {
                 }
                 Err(e) => {
                     warn!(
-                        session_id = %session.id,
+                        conversation_id = %session.id,
                         error = %e,
                         "dream: failed to process session"
                     );
@@ -397,7 +397,7 @@ impl DreamRunner {
         }
 
         debug!(
-            session_id = %session.id,
+            conversation_id = %session.id,
             new_messages = new_messages.len(),
             from_idx = start_idx,
             "dream: classifying session"

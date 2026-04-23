@@ -30,10 +30,10 @@ impl TwoTierToolSet {
     }
 
     /// Returns the names of tools currently active for a session.
-    pub fn active_tool_names(&self, session_id: &str) -> Vec<String> {
+    pub fn active_tool_names(&self, conversation_id: &str) -> Vec<String> {
         let sessions = self.conversation_active.read().unwrap();
         let mut names: Vec<String> = self.core_tools.iter().cloned().collect();
-        if let Some(state) = sessions.get(session_id) {
+        if let Some(state) = sessions.get(conversation_id) {
             names.extend(state.active.iter().cloned());
         }
         names.sort();
@@ -42,8 +42,8 @@ impl TwoTierToolSet {
     }
 
     /// Returns tools that exist but are not active for this session.
-    pub fn inactive_tool_names(&self, session_id: &str) -> Vec<String> {
-        let active = self.active_tool_names(session_id);
+    pub fn inactive_tool_names(&self, conversation_id: &str) -> Vec<String> {
+        let active = self.active_tool_names(conversation_id);
         let active_set: HashSet<&String> = active.iter().collect();
         self.all_tools
             .iter()
@@ -53,12 +53,12 @@ impl TwoTierToolSet {
     }
 
     /// Returns true if there are inactive tools for this session.
-    pub fn has_inactive_tools(&self, session_id: &str) -> bool {
-        !self.inactive_tool_names(session_id).is_empty()
+    pub fn has_inactive_tools(&self, conversation_id: &str) -> bool {
+        !self.inactive_tool_names(conversation_id).is_empty()
     }
 
     /// Activates a tool for a session. Returns true if the tool was newly activated.
-    pub fn activate(&self, session_id: &str, tool_name: &str) -> bool {
+    pub fn activate(&self, conversation_id: &str, tool_name: &str) -> bool {
         if !self.all_tools.contains(tool_name) {
             return false;
         }
@@ -67,7 +67,7 @@ impl TwoTierToolSet {
         }
 
         let mut sessions = self.conversation_active.write().unwrap();
-        let state = sessions.entry(session_id.to_string()).or_insert_with(|| {
+        let state = sessions.entry(conversation_id.to_string()).or_insert_with(|| {
             ConversationToolState {
                 active: HashSet::new(),
                 activated_this_turn: false,
@@ -82,17 +82,17 @@ impl TwoTierToolSet {
     }
 
     /// Returns true if a tool was activated during the current turn.
-    pub fn activated_during_turn(&self, session_id: &str) -> bool {
+    pub fn activated_during_turn(&self, conversation_id: &str) -> bool {
         let sessions = self.conversation_active.read().unwrap();
         sessions
-            .get(session_id)
+            .get(conversation_id)
             .is_some_and(|s| s.activated_this_turn)
     }
 
     /// Resets the turn-activation flag for a session.
-    pub fn reset_turn_flag(&self, session_id: &str) {
+    pub fn reset_turn_flag(&self, conversation_id: &str) {
         let mut sessions = self.conversation_active.write().unwrap();
-        if let Some(state) = sessions.get_mut(session_id) {
+        if let Some(state) = sessions.get_mut(conversation_id) {
             state.activated_this_turn = false;
         }
     }
@@ -103,9 +103,9 @@ impl TwoTierToolSet {
     }
 
     /// Cleans up session state.
-    pub fn cleanup_session(&self, session_id: &str) {
+    pub fn cleanup_session(&self, conversation_id: &str) {
         let mut sessions = self.conversation_active.write().unwrap();
-        sessions.remove(session_id);
+        sessions.remove(conversation_id);
     }
 }
 
