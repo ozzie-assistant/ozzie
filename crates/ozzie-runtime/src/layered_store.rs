@@ -2,8 +2,8 @@
 //!
 //! Layout:
 //! ```text
-//! {sessions_dir}/{conversation_id}/layered/index.json
-//! {sessions_dir}/{conversation_id}/layered/archives/archive_{id}.json
+//! {conversations_dir}/{conversation_id}/layered/index.json
+//! {conversations_dir}/{conversation_id}/layered/archives/archive_{id}.json
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -13,24 +13,24 @@ use ozzie_core::layered::{ArchivePayload, Index};
 
 /// File-based archive store, rooted at a sessions directory.
 pub struct FileArchiveStore {
-    sessions_dir: PathBuf,
+    conversations_dir: PathBuf,
 }
 
 impl FileArchiveStore {
     /// Creates a store rooted at the given sessions directory.
-    pub fn new(sessions_dir: impl Into<PathBuf>) -> Self {
+    pub fn new(conversations_dir: impl Into<PathBuf>) -> Self {
         Self {
-            sessions_dir: sessions_dir.into(),
+            conversations_dir: conversations_dir.into(),
         }
     }
 
     /// Returns the sessions directory.
-    pub fn sessions_dir(&self) -> &Path {
-        &self.sessions_dir
+    pub fn conversations_dir(&self) -> &Path {
+        &self.conversations_dir
     }
 
     fn layered_dir(&self, conversation_id: &str) -> PathBuf {
-        self.sessions_dir.join(conversation_id).join("layered")
+        self.conversations_dir.join(conversation_id).join("layered")
     }
 
     fn archives_dir(&self, conversation_id: &str) -> PathBuf {

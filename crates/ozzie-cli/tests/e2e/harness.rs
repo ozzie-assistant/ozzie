@@ -142,9 +142,9 @@ pub struct TestGatewayConfig {
 impl TestGateway {
     pub async fn start(config: TestGatewayConfig) -> Self {
         let tempdir = TempDir::new().expect("create tempdir");
-        let sessions_dir = tempdir.path().join("sessions");
+        let conversations_dir = tempdir.path().join("sessions");
         let sessions = Arc::new(
-            FileConversationStore::new(&sessions_dir).expect("create session store"),
+            FileConversationStore::new(&conversations_dir).expect("create session store"),
         );
         let bus = Arc::new(Bus::new(256));
 

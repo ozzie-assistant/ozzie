@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use ozzie_utils::config::sessions_path;
+use ozzie_utils::config::conversations_path;
 use ozzie_utils::names;
 use ozzie_runtime::FileConversationStore;
 use ozzie_runtime::conversation::ConversationStore;
@@ -29,8 +29,8 @@ enum ConversationsCommand {
 }
 
 pub async fn run(args: ConversationsArgs) -> anyhow::Result<()> {
-    let sessions_dir = sessions_path();
-    let store = FileConversationStore::new(&sessions_dir)?;
+    let conversations_dir = conversations_path();
+    let store = FileConversationStore::new(&conversations_dir)?;
 
     match args.command {
         ConversationsCommand::List => list(&store, args.json).await,

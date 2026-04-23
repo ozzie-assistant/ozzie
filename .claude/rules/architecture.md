@@ -12,7 +12,7 @@ crates/              → core + server
   ozzie-protocol/      → JSON-RPC 2.0 protocol (publishable)
   ozzie-core/          → pure domain (zero infra dependency)
   ozzie-llm/           → LLM providers (anthropic, openai, gemini, mistral, groq, ollama, xai)
-  ozzie-runtime/       → agent runtime (EventRunner, ReactLoop, sessions, tasks, scheduler)
+  ozzie-runtime/       → agent runtime (EventRunner, ReactLoop, conversations, tasks, scheduler)
   ozzie-tools/         → tool registry, native tools, MCP client
   ozzie-gateway/       → HTTP server (axum) + WebSocket hub + auth
   ozzie-memory/        → semantic memory (SQLite + FTS5 + vector)
@@ -33,7 +33,7 @@ clients/             → UI clients
 All Ozzie data lives under a single root directory:
 - `$OZZIE_PATH` if set, otherwise `~/.ozzie`
 - Created by `ozzie wake` (onboarding command)
-- Contains: `config.jsonc`, `.env`, `logs/`, `skills/`, `sessions/`, `memory/`, `tasks/`
+- Contains: `config.jsonc`, `.env`, `logs/`, `skills/`, `conversations/`, `memory/`, `tasks/`
 - Resolved via `config::ozzie_path()`, `config::config_path()`, `config::dotenv_path()`
 
 ## Key files
@@ -53,7 +53,7 @@ All Ozzie data lives under a single root directory:
 | Connector types   | `ozzie-core/src/connector/` (Identity, messages)   |
 | User profile      | `ozzie-core/src/profile/` (UserProfile, WhoamiEntry) |
 | Agent runtime     | `ozzie-runtime/src/event_runner.rs` + `react.rs`   |
-| Session runtime   | `ozzie-runtime/src/session_runtime.rs`             |
+| Conversation runtime | `ozzie-runtime/src/conversation_runtime.rs` + `conversation_registry.rs` |
 | ProcessSupervisor | `ozzie-runtime/src/connector/supervisor.rs`        |
 | Tool registry     | `ozzie-tools/src/registry.rs`                      |
 | Native tools      | `ozzie-tools/src/native/`                          |

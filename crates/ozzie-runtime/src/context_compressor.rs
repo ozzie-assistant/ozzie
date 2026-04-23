@@ -22,8 +22,8 @@ pub struct LayeredContextCompressor {
 
 impl LayeredContextCompressor {
     /// Creates a compressor using the heuristic fallback summarizer.
-    pub fn new(sessions_dir: &Path, cfg: Config) -> Self {
-        let store = Box::new(FileArchiveStore::new(sessions_dir));
+    pub fn new(conversations_dir: &Path, cfg: Config) -> Self {
+        let store = Box::new(FileArchiveStore::new(conversations_dir));
         Self {
             manager: Manager::new(store, cfg, Arc::new(FallbackSummarizer)),
         }

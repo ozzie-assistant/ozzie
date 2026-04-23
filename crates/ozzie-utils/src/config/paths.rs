@@ -41,9 +41,9 @@ pub fn logs_path() -> PathBuf {
     ozzie_path().join("logs")
 }
 
-/// Returns the path to the sessions directory.
-pub fn sessions_path() -> PathBuf {
-    ozzie_path().join("sessions")
+/// Returns the path to the conversations directory.
+pub fn conversations_path() -> PathBuf {
+    ozzie_path().join("conversations")
 }
 
 /// Returns the path to the tasks directory.
@@ -79,7 +79,7 @@ pub fn ensure_dirs() -> std::io::Result<()> {
     for path in [
         ozzie_path(),
         logs_path(),
-        sessions_path(),
+        conversations_path(),
         tasks_path(),
         memory_path(),
         skills_path(),
@@ -114,7 +114,7 @@ mod tests {
     fn subdirs_under_ozzie_path() {
         let root = ozzie_path();
         assert_eq!(logs_path(), root.join("logs"));
-        assert_eq!(sessions_path(), root.join("sessions"));
+        assert_eq!(conversations_path(), root.join("conversations"));
         assert_eq!(tasks_path(), root.join("tasks"));
         assert_eq!(memory_path(), root.join("memory"));
         assert_eq!(skills_path(), root.join("skills"));

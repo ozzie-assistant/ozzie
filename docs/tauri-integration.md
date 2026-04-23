@@ -178,7 +178,7 @@ $OZZIE_PATH/
 │   │   └── {slug}.md
 │   ├── {slug}_{id}.md        # Memory entries (markdown SsoT)
 │   └── .cache/memory.db      # SQLite FTS5 index
-├── sessions/                 # Session history
+├── conversations/                 # Session history
 ├── logs/                     # Event logs (JSONL)
 └── skills/                   # Installed skills
 ```

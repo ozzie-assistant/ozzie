@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 use ozzie_core::actors::{ActorPool, ActorPoolConfig};
 use ozzie_core::config;
 use ozzie_utils::config::{
-    config_path, dotenv_path, logs_path, memory_path, ozzie_path, sessions_path,
+    config_path, dotenv_path, logs_path, memory_path, ozzie_path, conversations_path,
     skills_path,
 };
 use ozzie_core::conscience::ToolPermissions;
@@ -316,10 +316,10 @@ fn load_config() -> config::Config {
 
 fn init_session_store() -> anyhow::Result<Arc<FileConversationStore>> {
     let sessions = Arc::new(
-        FileConversationStore::new(&sessions_path())
+        FileConversationStore::new(&conversations_path())
             .map_err(|e| anyhow::anyhow!("init session store: {e}"))?,
     );
-    info!(sessions_dir = %sessions_path().display(), "session store initialized");
+    info!(conversations_dir = %conversations_path().display(), "session store initialized");
     Ok(sessions)
 }
 
@@ -382,7 +382,7 @@ fn init_compressor(
 
     // Use LLM-backed summarizer with the default provider
     let summarizer = Arc::new(ozzie_runtime::llm_summarizer::LlmSummarizer::new(provider));
-    let store = Box::new(ozzie_runtime::layered_store::FileArchiveStore::new(sessions_path()));
+    let store = Box::new(ozzie_runtime::layered_store::FileArchiveStore::new(conversations_path()));
     let manager = ozzie_core::layered::Manager::new(store, layered_cfg.clone(), summarizer);
 
     info!(
