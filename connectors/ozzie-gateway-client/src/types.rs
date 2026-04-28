@@ -6,8 +6,11 @@ pub use ozzie_types::events::{
 };
 pub use ozzie_types::common::PromptOption;
 pub use ozzie_types::requests::{
-    OpenConversationParams as OpenConversationOpts, PromptResponseParams,
-    SendConnectorMessageParams as ConnectorMessageParams, ConversationResult as SessionInfo,
+    ArchivedResult, CloseConversationParams, ConversationResult as SessionInfo,
+    ConversationSummaryDto, ConversationsListResult, ListConversationsParams,
+    NewConversationParams, OpenConversationParams as OpenConversationOpts, PromptResponseParams,
+    SendConnectorMessageParams as ConnectorMessageParams, SwitchConversationParams,
+    SwitchedResult,
 };
 
 // ---- Notifications ----

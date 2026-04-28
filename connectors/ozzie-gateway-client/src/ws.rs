@@ -34,6 +34,10 @@ const METHOD_OPEN_CONVERSATION: &str = "open_conversation";
 const METHOD_SEND_CONNECTOR_MESSAGE: &str = "send_connector_message";
 const METHOD_PROMPT_RESPONSE: &str = "prompt_response";
 const METHOD_ACCEPT_ALL_TOOLS: &str = "accept_all_tools";
+const METHOD_NEW_CONVERSATION: &str = "new_conversation";
+const METHOD_SWITCH_CONVERSATION: &str = "switch_conversation";
+const METHOD_LIST_CONVERSATIONS: &str = "list_conversations";
+const METHOD_CLOSE_CONVERSATION: &str = "close_conversation";
 const MAX_NOTIFICATION_BUFFER: usize = 1024;
 
 /// WebSocket-backed gateway client.
@@ -169,6 +173,56 @@ impl GatewayClient for WsGatewayClient {
         self.call(METHOD_ACCEPT_ALL_TOOLS, serde_json::json!({}))
             .await?;
         Ok(())
+    }
+
+    async fn new_conversation(&mut self, title: Option<String>) -> Result<SessionInfo> {
+        let params = NewConversationParams { title };
+        let value =
+            serde_json::to_value(&params).map_err(|e| GatewayError::Protocol(e.to_string()))?;
+        let result = self.call(METHOD_NEW_CONVERSATION, value).await?;
+        serde_json::from_value(result)
+            .map_err(|e| GatewayError::Protocol(format!("invalid new_conversation response: {e}")))
+    }
+
+    async fn switch_conversation(&mut self, conversation_id: &str) -> Result<SwitchedResult> {
+        let params = SwitchConversationParams {
+            conversation_id: conversation_id.to_string(),
+        };
+        let value =
+            serde_json::to_value(&params).map_err(|e| GatewayError::Protocol(e.to_string()))?;
+        let result = self.call(METHOD_SWITCH_CONVERSATION, value).await?;
+        serde_json::from_value(result).map_err(|e| {
+            GatewayError::Protocol(format!("invalid switch_conversation response: {e}"))
+        })
+    }
+
+    async fn list_conversations(
+        &mut self,
+        include_archived: bool,
+    ) -> Result<Vec<ConversationSummaryDto>> {
+        let params = ListConversationsParams { include_archived };
+        let value =
+            serde_json::to_value(&params).map_err(|e| GatewayError::Protocol(e.to_string()))?;
+        let result = self.call(METHOD_LIST_CONVERSATIONS, value).await?;
+        let parsed: ConversationsListResult = serde_json::from_value(result).map_err(|e| {
+            GatewayError::Protocol(format!("invalid list_conversations response: {e}"))
+        })?;
+        Ok(parsed.conversations)
+    }
+
+    async fn close_conversation(
+        &mut self,
+        conversation_id: Option<&str>,
+    ) -> Result<ArchivedResult> {
+        let params = CloseConversationParams {
+            conversation_id: conversation_id.map(String::from),
+        };
+        let value =
+            serde_json::to_value(&params).map_err(|e| GatewayError::Protocol(e.to_string()))?;
+        let result = self.call(METHOD_CLOSE_CONVERSATION, value).await?;
+        serde_json::from_value(result).map_err(|e| {
+            GatewayError::Protocol(format!("invalid close_conversation response: {e}"))
+        })
     }
 
     async fn read_notification(&mut self) -> Result<Notification> {

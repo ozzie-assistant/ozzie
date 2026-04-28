@@ -83,13 +83,26 @@ impl ConversationRegistry {
     /// and stores `connector_coord` in its metadata for later rebinding.
     /// The resolved conversation is NOT touched — the caller decides whether
     /// this coordinate should steal the active focus.
+    ///
+    /// If a binding already exists but points to an archived conversation,
+    /// it is replaced with a fresh one. This is what powers connector-side
+    /// commands like Discord's `/new`: archive the conversation, the next
+    /// message from the same coordinate spawns a fresh thread.
     pub async fn resolve_or_create_for_coord(
         &self,
         coord_key: &str,
         title: Option<String>,
     ) -> Result<String, ConversationError> {
         if let Some(existing) = self.bindings.get(coord_key) {
-            return Ok(existing.clone());
+            let id = existing.clone();
+            drop(existing);
+            // Verify the bound conversation is still Active; otherwise rebind.
+            match self.store.get(&id).await? {
+                Some(c) if matches!(c.status, ConversationStatus::Active) => return Ok(id),
+                _ => {
+                    self.bindings.remove(coord_key);
+                }
+            }
         }
 
         let id = self.generate_id();
@@ -452,6 +465,25 @@ mod tests {
             .unwrap();
         assert_ne!(bound, a);
         assert_eq!(reg.active().as_deref(), Some(a.as_str()));
+    }
+
+    #[tokio::test]
+    async fn resolve_for_coord_rebinds_when_target_archived() {
+        let reg = new_registry();
+        let id1 = reg
+            .resolve_or_create_for_coord("discord:g:c:u", None)
+            .await
+            .unwrap();
+        // Archive the conversation behind the binding.
+        reg.archive(&id1).await.unwrap();
+
+        // Next resolution should create a fresh one.
+        let id2 = reg
+            .resolve_or_create_for_coord("discord:g:c:u", None)
+            .await
+            .unwrap();
+        assert_ne!(id1, id2);
+        assert_eq!(reg.coord_binding("discord:g:c:u").as_deref(), Some(id2.as_str()));
     }
 
     #[tokio::test]

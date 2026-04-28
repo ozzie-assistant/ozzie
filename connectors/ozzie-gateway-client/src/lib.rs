@@ -25,6 +25,21 @@ pub trait GatewayClient: Send {
     /// Auto-approve all tool calls for the current session.
     async fn accept_all_tools(&mut self) -> Result<()>;
 
+    /// Create a new conversation and make it active. Returns the new id.
+    async fn new_conversation(&mut self, title: Option<String>) -> Result<SessionInfo>;
+
+    /// Switch the active conversation. Returns the previous active id, if any.
+    async fn switch_conversation(&mut self, conversation_id: &str) -> Result<SwitchedResult>;
+
+    /// List known conversations (most recent first).
+    async fn list_conversations(
+        &mut self,
+        include_archived: bool,
+    ) -> Result<Vec<ConversationSummaryDto>>;
+
+    /// Archive a conversation. `None` defaults to the active one.
+    async fn close_conversation(&mut self, conversation_id: Option<&str>) -> Result<ArchivedResult>;
+
     /// Read the next gateway notification. Blocks until one is available.
     async fn read_notification(&mut self) -> Result<Notification>;
 }
