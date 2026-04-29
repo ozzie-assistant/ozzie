@@ -1,6 +1,7 @@
 mod ask;
 mod chat;
 mod connector;
+mod conversations;
 pub(crate) mod daemon;
 mod events;
 mod gateway;
@@ -9,7 +10,6 @@ mod memory;
 mod pairing;
 mod schedule;
 mod secret;
-mod sessions;
 mod status;
 mod tui;
 mod wake;
@@ -23,8 +23,8 @@ pub enum Command {
     Gateway(gateway::GatewayArgs),
     /// Check gateway health status.
     Status(status::StatusArgs),
-    /// Manage sessions.
-    Sessions(sessions::SessionsArgs),
+    /// Manage conversations.
+    Conversations(conversations::ConversationsArgs),
     /// Query gateway events.
     Events(events::EventsArgs),
     /// Manage secrets.
@@ -60,7 +60,7 @@ pub async fn run(cmd: Command, config_path: Option<&str>) -> anyhow::Result<()> 
     match cmd {
         Command::Gateway(args) => gateway::run(args, config_path).await,
         Command::Status(args) => status::run(args).await,
-        Command::Sessions(args) => sessions::run(args).await,
+        Command::Conversations(args) => conversations::run(args).await,
         Command::Events(args) => events::run(args).await,
         Command::Secret(args) => secret::run(args).await,
         Command::Schedule(args) => schedule::run(args).await,

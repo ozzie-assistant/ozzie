@@ -8,7 +8,7 @@ use std::sync::RwLock;
 pub struct ToolPermissions {
     /// Globally allowed tools (from config).
     global_allowed: HashSet<String>,
-    /// Per-session approvals: session_id → set of tool names. "*" means all.
+    /// Per-session approvals: conversation_id → set of tool names. "*" means all.
     session_allowed: RwLock<HashMap<String, HashSet<String>>>,
 }
 
@@ -21,12 +21,12 @@ impl ToolPermissions {
     }
 
     /// Returns true if the tool is approved for this session.
-    pub fn is_allowed(&self, session_id: &str, tool_name: &str) -> bool {
+    pub fn is_allowed(&self, conversation_id: &str, tool_name: &str) -> bool {
         if self.global_allowed.contains(tool_name) {
             return true;
         }
         let sessions = self.session_allowed.read().unwrap();
-        if let Some(tools) = sessions.get(session_id) {
+        if let Some(tools) = sessions.get(conversation_id) {
             tools.contains("*") || tools.contains(tool_name)
         } else {
             false
@@ -34,35 +34,35 @@ impl ToolPermissions {
     }
 
     /// Approves a single tool for a session.
-    pub fn allow_for_session(&self, session_id: &str, tool_name: &str) {
+    pub fn allow_for_session(&self, conversation_id: &str, tool_name: &str) {
         let mut sessions = self.session_allowed.write().unwrap();
         sessions
-            .entry(session_id.to_string())
+            .entry(conversation_id.to_string())
             .or_default()
             .insert(tool_name.to_string());
     }
 
     /// Enables accept-all mode for a session.
-    pub fn allow_all_for_session(&self, session_id: &str) {
+    pub fn allow_all_for_session(&self, conversation_id: &str) {
         let mut sessions = self.session_allowed.write().unwrap();
         sessions
-            .entry(session_id.to_string())
+            .entry(conversation_id.to_string())
             .or_default()
             .insert("*".to_string());
     }
 
     /// Returns true if the session has accept-all mode enabled.
-    pub fn is_session_accept_all(&self, session_id: &str) -> bool {
+    pub fn is_session_accept_all(&self, conversation_id: &str) -> bool {
         let sessions = self.session_allowed.read().unwrap();
         sessions
-            .get(session_id)
+            .get(conversation_id)
             .is_some_and(|tools| tools.contains("*"))
     }
 
     /// Removes all approvals for a session.
-    pub fn cleanup_session(&self, session_id: &str) {
+    pub fn cleanup_session(&self, conversation_id: &str) {
         let mut sessions = self.session_allowed.write().unwrap();
-        sessions.remove(session_id);
+        sessions.remove(conversation_id);
     }
 }
 

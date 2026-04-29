@@ -22,8 +22,8 @@ pub struct LayeredContextCompressor {
 
 impl LayeredContextCompressor {
     /// Creates a compressor using the heuristic fallback summarizer.
-    pub fn new(sessions_dir: &Path, cfg: Config) -> Self {
-        let store = Box::new(FileArchiveStore::new(sessions_dir));
+    pub fn new(conversations_dir: &Path, cfg: Config) -> Self {
+        let store = Box::new(FileArchiveStore::new(conversations_dir));
         Self {
             manager: Manager::new(store, cfg, Arc::new(FallbackSummarizer)),
         }
@@ -39,13 +39,13 @@ impl LayeredContextCompressor {
 impl ContextCompressor for LayeredContextCompressor {
     async fn compress(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         history: &[Message],
     ) -> Result<Vec<Message>, CompressionError> {
         let layered_msgs = ozzie_core::layered::to_layered_messages(history);
         let (result_msgs, _stats) = self
             .manager
-            .apply(session_id, &layered_msgs)
+            .apply(conversation_id, &layered_msgs)
             .await
             .map_err(|e| CompressionError::Other(e.to_string()))?;
 

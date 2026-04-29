@@ -102,7 +102,7 @@ pub fn session_section(
         parts.push(format!("Language: {lang}"));
     }
     if let Some(t) = title {
-        parts.push(format!("Session: {t}"));
+        parts.push(format!("Conversation: {t}"));
     }
     if message_count > 0 {
         parts.push(format!("Messages in history: {message_count}"));
@@ -112,7 +112,7 @@ pub fn session_section(
         return String::new();
     }
 
-    format!("## Session Context\n{}", parts.join("\n"))
+    format!("## Conversation Context\n{}", parts.join("\n"))
 }
 
 /// Builds the skills section.

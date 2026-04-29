@@ -2,7 +2,7 @@
 #[derive(Debug, Clone)]
 pub enum ClientEvent {
     Connected {
-        session_id: String,
+        conversation_id: String,
     },
     StreamDelta {
         content: String,
@@ -51,11 +51,11 @@ mod tests {
     #[test]
     fn event_clone() {
         let event = ClientEvent::Connected {
-            session_id: "sess_test".to_string(),
+            conversation_id: "sess_test".to_string(),
         };
         let cloned = event.clone();
-        if let ClientEvent::Connected { session_id } = cloned {
-            assert_eq!(session_id, "sess_test");
+        if let ClientEvent::Connected { conversation_id } = cloned {
+            assert_eq!(conversation_id, "sess_test");
         } else {
             panic!("expected Connected variant");
         }

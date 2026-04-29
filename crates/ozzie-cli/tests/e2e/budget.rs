@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ozzie_client::OpenSessionOpts;
+use ozzie_client::OpenConversationOpts;
 use ozzie_tools::ToolRegistry;
 
 use crate::harness::{
@@ -26,8 +26,8 @@ async fn conversation_with_all_tools_completes() {
 
     let mut client = gw.connect().await;
     client
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: None,
         })
         .await

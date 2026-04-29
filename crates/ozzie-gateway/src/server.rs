@@ -30,8 +30,8 @@ pub struct AppState {
     pub bus: Arc<dyn EventBus>,
     /// Optional authenticator. If `None`, all requests pass (insecure mode).
     pub authenticator: Option<Arc<dyn Authenticator>>,
-    /// Session store for REST API.
-    pub sessions: Option<Arc<dyn ozzie_runtime::SessionStore>>,
+    /// Conversation store for REST API.
+    pub sessions: Option<Arc<dyn ozzie_runtime::ConversationStore>>,
     /// Pairing manager for chat connector pairing flows.
     pub pairing_manager: Option<Arc<ozzie_runtime::PairingManager>>,
     /// Chat pairing storage for direct disk operations.
@@ -228,10 +228,10 @@ async fn events(
     };
 
     // Optional session filter (client-side)
-    let filtered: Vec<_> = if let Some(ref session_id) = query.session {
+    let filtered: Vec<_> = if let Some(ref conversation_id) = query.session {
         events
             .into_iter()
-            .filter(|e| e.session_id.as_deref() == Some(session_id.as_str()))
+            .filter(|e| e.conversation_id.as_deref() == Some(conversation_id.as_str()))
             .collect()
     } else {
         events
@@ -244,7 +244,7 @@ async fn events(
                 "id": e.id,
                 "type": e.event_type(),
                 "source": e.source,
-                "session_id": e.session_id,
+                "conversation_id": e.conversation_id,
                 "timestamp": e.timestamp,
                 "payload": e.payload,
             })

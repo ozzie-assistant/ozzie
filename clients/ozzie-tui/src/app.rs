@@ -17,7 +17,7 @@ use crate::tui::Tui;
 const TICK_MS: u64 = 80; // ~12 fps pour les animations (spinner, shimmer)
 
 pub struct App {
-    session_id: String,
+    conversation_id: String,
     transcript: TranscriptWidget,
     composer: ComposerWidget,
     overlay_stack: Vec<Box<dyn Overlay>>,
@@ -35,12 +35,12 @@ pub struct App {
 
 impl App {
     pub fn new(
-        session_id: String,
+        conversation_id: String,
         server_rx: mpsc::UnboundedReceiver<ServerEvent>,
         out_tx: mpsc::UnboundedSender<OutboundMsg>,
     ) -> Self {
         Self {
-            session_id,
+            conversation_id,
             transcript: TranscriptWidget::new(),
             composer: ComposerWidget::new(),
             overlay_stack: Vec::new(),
@@ -181,8 +181,8 @@ impl App {
 
     fn handle_server(&mut self, ev: ServerEvent) {
         match ev {
-            ServerEvent::SessionReady(id) => {
-                self.session_id = id;
+            ServerEvent::ConversationReady(id) => {
+                self.conversation_id = id;
             }
             ServerEvent::AssistantDelta(delta) => {
                 if self.pending_assistant_cell {
@@ -295,7 +295,7 @@ impl App {
         self.composer.render(frame, chunks[1]);
 
         let status = StatusLine {
-            session_id: self.session_id.clone(),
+            conversation_id: self.conversation_id.clone(),
             agent_running: self.agent_running,
             active_tool: self.active_tool.clone(),
         };

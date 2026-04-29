@@ -71,7 +71,7 @@ The token is stored in `$OZZIE_PATH/.token`.
 
 ```
 1. Connect    → WebSocket handshake to /api/ws?token=...
-2. Open       → send "open_session" request
+2. Open       → send "open_conversation" request
 3. Interact   → send messages, receive notifications
 4. Disconnect → close WebSocket (server cleans up)
 ```
@@ -87,7 +87,7 @@ The token is stored in `$OZZIE_PATH/.token`.
   "jsonrpc": "2.0",
   "id": "req_1",
   "method": "send_message",
-  "params": { "session_id": "sess_xyz", "text": "Hello" }
+  "params": { "conversation_id": "sess_xyz", "text": "Hello" }
 }
 ```
 
@@ -120,7 +120,7 @@ Notifications have no `id` — they are server-pushed events.
   "jsonrpc": "2.0",
   "method": "assistant.stream",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "phase": "delta",
     "content": "Hello!",
     "index": 1
@@ -150,19 +150,19 @@ Create a new session or resume an existing one.
 **Params:**
 ```json
 {
-  "session_id": null,
+  "conversation_id": null,
   "working_dir": "/home/user/project",
   "language": "fr",
   "model": "gemini"
 }
 ```
 
-All fields optional. Empty/null `session_id` creates a new session.
+All fields optional. Empty/null `conversation_id` creates a new session.
 
 **Result:**
 ```json
 {
-  "session_id": "sess_cosmic_asimov",
+  "conversation_id": "sess_cosmic_asimov",
   "root_dir": "/home/user/project"
 }
 ```
@@ -176,7 +176,7 @@ Send a user message. Triggers the LLM inference loop.
 **Params:**
 ```json
 {
-  "session_id": "sess_xyz",
+  "conversation_id": "sess_xyz",
   "text": "What files are in the current directory?"
 }
 ```
@@ -184,7 +184,7 @@ Send a user message. Triggers the LLM inference loop.
 **With images (multimodal):**
 ```json
 {
-  "session_id": "sess_xyz",
+  "conversation_id": "sess_xyz",
   "text": "What's in this image?",
   "images": [
     { "base64": "iVBORw0K...", "media_type": "image/png", "alt": "screenshot" }
@@ -232,7 +232,7 @@ Load conversation history.
 **Params:**
 ```json
 {
-  "session_id": "sess_xyz",
+  "conversation_id": "sess_xyz",
   "limit": 20
 }
 ```
@@ -255,7 +255,7 @@ Auto-approve all dangerous tool calls for this session.
 
 **Params:**
 ```json
-{ "session_id": "sess_xyz" }
+{ "conversation_id": "sess_xyz" }
 ```
 
 **Result:**
@@ -297,7 +297,7 @@ Cancel the active ReactLoop for a session. Idempotent.
 
 **Params:**
 ```json
-{ "session_id": "sess_xyz" }
+{ "conversation_id": "sess_xyz" }
 ```
 
 **Result:**
@@ -311,7 +311,7 @@ Triggers an `agent.cancelled` notification.
 
 ## Notifications (Server → Client)
 
-Notifications are JSON-RPC 2.0 messages without an `id`. The `method` field contains the event type. All event data is in `params`, which always includes `session_id` when scoped to a session.
+Notifications are JSON-RPC 2.0 messages without an `id`. The `method` field contains the event type. All event data is in `params`, which always includes `conversation_id` when scoped to a session.
 
 ### Assistant
 
@@ -324,7 +324,7 @@ Streaming LLM output.
   "jsonrpc": "2.0",
   "method": "assistant.stream",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "phase": "delta",
     "content": "Hello!",
     "index": 1
@@ -347,7 +347,7 @@ Final complete message (sent after stream ends).
   "jsonrpc": "2.0",
   "method": "assistant.message",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "content": "The full response text...",
     "error": null
   }
@@ -369,7 +369,7 @@ Tool invocation started.
   "jsonrpc": "2.0",
   "method": "tool.call",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "call_id": "call_abc",
     "tool": "execute",
     "arguments": "{\"command\": \"ls\"}"
@@ -386,7 +386,7 @@ Tool execution completed.
   "jsonrpc": "2.0",
   "method": "tool.result",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "call_id": "call_abc",
     "tool": "execute",
     "result": "file1.txt\nfile2.txt",
@@ -404,7 +404,7 @@ Progress update from a long-running tool.
   "jsonrpc": "2.0",
   "method": "tool.progress",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "call_id": "call_abc",
     "tool": "execute",
     "message": "Processing step 3/10..."
@@ -425,7 +425,7 @@ Server needs user input. Connector **must** display UI and reply with `prompt_re
   "jsonrpc": "2.0",
   "method": "prompt.request",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "prompt_type": "select",
     "label": "Tool \"execute\" requires approval. Arguments: {\"command\": \"ls\"}",
     "token": "approval-execute-abc123",
@@ -450,7 +450,7 @@ ReactLoop cancelled by user (via `cancel_session`).
 {
   "jsonrpc": "2.0",
   "method": "agent.cancelled",
-  "params": { "session_id": "sess_xyz", "reason": "user_request" }
+  "params": { "conversation_id": "sess_xyz", "reason": "user_request" }
 }
 ```
 
@@ -463,7 +463,7 @@ LLM voluntarily stopped via `yield_control` tool.
   "jsonrpc": "2.0",
   "method": "agent.yielded",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "reason": "done",
     "resume_on": null
   }
@@ -483,8 +483,8 @@ LLM voluntarily stopped via `yield_control` tool.
 #### `session.created` / `session.closed`
 
 ```json
-{ "jsonrpc": "2.0", "method": "session.created", "params": { "session_id": "sess_xyz" } }
-{ "jsonrpc": "2.0", "method": "session.closed", "params": { "session_id": "sess_xyz" } }
+{ "jsonrpc": "2.0", "method": "conversation.created", "params": { "conversation_id": "sess_xyz" } }
+{ "jsonrpc": "2.0", "method": "conversation.closed", "params": { "conversation_id": "sess_xyz" } }
 ```
 
 ---
@@ -500,7 +500,7 @@ LLM call telemetry.
   "jsonrpc": "2.0",
   "method": "internal.llm.call",
   "params": {
-    "session_id": "sess_xyz",
+    "conversation_id": "sess_xyz",
     "phase": "response",
     "tokens_input": 1200,
     "tokens_output": 450
@@ -517,8 +517,8 @@ LLM call telemetry.
 ```
 Client                              Server
   │                                   │
-  ├─{"method":"open_session"} ──────►│
-  │◄──── {"result":{"session_id":…}} ┤
+  ├─{"method":"open_conversation"} ──────►│
+  │◄──── {"result":{"conversation_id":…}} ┤
   │                                   │
   ├─{"method":"send_message"} ──────►│
   │◄──────── {"result":{"accepted"}} ┤
@@ -558,7 +558,7 @@ Client                              Server
   ├─{"method":"send_message"} ──────►│
   │   ... tool calls in progress ...  │
   │                                   │
-  ├─{"method":"cancel_session"} ────►│
+  ├─{"method":"cancel_conversation"} ────►│
   │◄── {"result":{"cancelled":true}} ┤
   │◄── notification: agent.cancelled ─┤
   │                                   │
@@ -649,17 +649,17 @@ req_id = 0
 req_id += 1
 ws.send(json.dumps({
     "jsonrpc": "2.0", "id": f"req_{req_id}",
-    "method": "open_session", "params": {}
+    "method": "open_conversation", "params": {}
 }))
 res = json.loads(ws.recv())
-session_id = res["result"]["session_id"]
+conversation_id = res["result"]["conversation_id"]
 
 # 2. Send message
 req_id += 1
 ws.send(json.dumps({
     "jsonrpc": "2.0", "id": f"req_{req_id}",
     "method": "send_message",
-    "params": {"session_id": session_id, "text": user_input}
+    "params": {"conversation_id": conversation_id, "text": user_input}
 }))
 
 # 3. Event loop

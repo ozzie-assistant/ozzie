@@ -27,7 +27,7 @@ pub type ProgressSender = std::sync::Arc<dyn Fn(ToolProgress) + Send + Sync>;
 #[derive(Clone, Default)]
 pub struct ToolContext {
     /// Active session ID (empty if unknown).
-    pub session_id: String,
+    pub conversation_id: String,
     /// Per-tool constraints from task config (empty = no constraints).
     pub tool_constraints: HashMap<String, crate::events::ToolConstraint>,
     /// Working directory for resolving relative paths in tool calls.
@@ -43,7 +43,7 @@ pub struct ToolContext {
 impl std::fmt::Debug for ToolContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolContext")
-            .field("session_id", &self.session_id)
+            .field("conversation_id", &self.conversation_id)
             .field("work_dir", &self.work_dir)
             .field("subtask_depth", &self.subtask_depth)
             .field("progress", &self.progress.is_some())
@@ -132,6 +132,35 @@ pub trait ToolLookup: Send + Sync {
     fn tool_names(&self) -> Vec<String>;
 }
 
+// ---- Conversation Registry Port ----
+
+/// Runtime interface for the conversation registry.
+///
+/// Exposes the operations LLM tools and user-facing RPCs need: create,
+/// switch (via `set_active`), list, archive. Adapters (currently
+/// `ConversationRegistry` in ozzie-runtime) are free to manage runtime
+/// state, event emission, and last-touched semantics.
+#[async_trait::async_trait]
+pub trait ConversationManager: Send + Sync {
+    /// Returns the currently active conversation id, if any.
+    fn active(&self) -> Option<String>;
+
+    /// Sets the active conversation explicitly. Returns the previous active id.
+    fn set_active(&self, id: &str) -> Option<String>;
+
+    /// Creates a new conversation and sets it as active.
+    async fn create(
+        &self,
+        title: Option<String>,
+    ) -> Result<String, super::ConversationError>;
+
+    /// Lists all conversations (sorted by updated_at desc).
+    async fn list(&self) -> Result<Vec<super::ConversationSummary>, super::ConversationError>;
+
+    /// Archives a conversation (freeze + hide, history preserved).
+    async fn archive(&self, id: &str) -> Result<(), super::ConversationError>;
+}
+
 // ---- Runner Ports ----
 
 /// Options for runner creation.
@@ -192,7 +221,7 @@ pub use worm_memory::{
 pub trait ContextCompressor: Send + Sync {
     async fn compress(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         history: &[Message],
     ) -> Result<Vec<Message>, CompressionError>;
 }
@@ -254,7 +283,7 @@ pub trait SubAgentRunner: Send + Sync {
         config: &crate::config::SubAgentConfig,
         task: &str,
         context: Option<&str>,
-        session_id: &str,
+        conversation_id: &str,
         work_dir: Option<&str>,
     ) -> Result<String, ToolError>;
 }
@@ -271,7 +300,7 @@ pub trait SkillExecutor: Send + Sync {
 
 /// Seeds per-session tool permissions.
 pub trait ToolPermissionsSeeder: Send + Sync {
-    fn allow_for_session(&self, session_id: &str, tool_name: &str);
+    fn allow_for_session(&self, conversation_id: &str, tool_name: &str);
 }
 
 // ---- Pairing Ports ----

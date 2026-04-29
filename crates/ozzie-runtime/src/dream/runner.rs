@@ -12,8 +12,8 @@ use ozzie_core::profile::ProfileRepository;
 use ozzie_llm::Provider;
 use ozzie_memory::{ImportanceLevel, MemoryEntry, MemoryType, Store};
 
-use crate::session::{Session, SessionStatus};
-use crate::SessionStore;
+use crate::conversation::{Conversation, ConversationStatus};
+use crate::ConversationStore;
 
 use super::classifier;
 use super::record_store::DreamRecordStore;
@@ -28,7 +28,7 @@ const MIN_MESSAGES_TO_PROCESS: usize = 4;
 /// Runs periodic dream consolidation — extracts lasting knowledge from conversations
 /// and project workspaces.
 pub struct DreamRunner {
-    sessions: Arc<dyn SessionStore>,
+    sessions: Arc<dyn ConversationStore>,
     memory_store: Arc<dyn Store>,
     page_store: Option<Arc<dyn PageStore>>,
     provider: Arc<dyn Provider>,
@@ -42,7 +42,7 @@ pub struct DreamRunner {
 
 impl DreamRunner {
     pub fn new(
-        sessions: Arc<dyn SessionStore>,
+        sessions: Arc<dyn ConversationStore>,
         memory_store: Arc<dyn Store>,
         provider: Arc<dyn Provider>,
         ozzie_path: &Path,
@@ -163,7 +163,7 @@ impl DreamRunner {
                     records.insert(session.id.clone(), record.clone());
                     if let Err(e) = record_store.save(&record) {
                         error!(
-                            session_id = %session.id,
+                            conversation_id = %session.id,
                             error = %e,
                             "dream: failed to save record"
                         );
@@ -174,7 +174,7 @@ impl DreamRunner {
                 }
                 Err(e) => {
                     warn!(
-                        session_id = %session.id,
+                        conversation_id = %session.id,
                         error = %e,
                         "dream: failed to process session"
                     );
@@ -371,7 +371,7 @@ impl DreamRunner {
     /// Processes a single session. Returns `None` if nothing to do.
     async fn process_session(
         &self,
-        session: &Session,
+        session: &Conversation,
         previous: Option<&DreamRecord>,
     ) -> anyhow::Result<Option<DreamRecord>> {
         let messages = self.sessions.load_messages(&session.id).await?;
@@ -397,7 +397,7 @@ impl DreamRunner {
         }
 
         debug!(
-            session_id = %session.id,
+            conversation_id = %session.id,
             new_messages = new_messages.len(),
             from_idx = start_idx,
             "dream: classifying session"
@@ -492,10 +492,10 @@ impl DreamRunner {
     }
 }
 
-fn is_eligible(session: &Session, now: chrono::DateTime<Utc>, active_min_age: Duration) -> bool {
+fn is_eligible(session: &Conversation, now: chrono::DateTime<Utc>, active_min_age: Duration) -> bool {
     match session.status {
-        SessionStatus::Closed => true,
-        SessionStatus::Active => {
+        ConversationStatus::Archived => true,
+        ConversationStatus::Active => {
             let age = now - session.updated_at;
             age.to_std().unwrap_or(Duration::ZERO) >= active_min_age
         }
@@ -508,9 +508,9 @@ mod tests {
 
     #[test]
     fn closed_session_is_eligible() {
-        let session = Session {
+        let session = Conversation {
             id: "s1".to_string(),
-            status: SessionStatus::Closed,
+            status: ConversationStatus::Archived,
             updated_at: Utc::now(),
             ..test_session()
         };
@@ -519,9 +519,9 @@ mod tests {
 
     #[test]
     fn recent_active_session_not_eligible() {
-        let session = Session {
+        let session = Conversation {
             id: "s2".to_string(),
-            status: SessionStatus::Active,
+            status: ConversationStatus::Active,
             updated_at: Utc::now(),
             ..test_session()
         };
@@ -530,21 +530,21 @@ mod tests {
 
     #[test]
     fn old_active_session_is_eligible() {
-        let session = Session {
+        let session = Conversation {
             id: "s3".to_string(),
-            status: SessionStatus::Active,
+            status: ConversationStatus::Active,
             updated_at: Utc::now() - chrono::Duration::hours(3),
             ..test_session()
         };
         assert!(is_eligible(&session, Utc::now(), DEFAULT_ACTIVE_MIN_AGE));
     }
 
-    fn test_session() -> Session {
-        Session {
+    fn test_session() -> Conversation {
+        Conversation {
             id: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            status: SessionStatus::Active,
+            status: ConversationStatus::Active,
             model: None,
             root_dir: None,
             summary: None,

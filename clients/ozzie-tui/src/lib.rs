@@ -10,7 +10,7 @@ mod transcript;
 mod tui;
 
 use anyhow::Context;
-use ozzie_client::{OzzieClient, OpenSessionOpts};
+use ozzie_client::{OzzieClient, OpenConversationOpts};
 use ozzie_utils::config::ozzie_path;
 use tokio::sync::mpsc;
 
@@ -32,9 +32,9 @@ pub async fn run(opts: TuiOpts<'_>) -> anyhow::Result<()> {
         .await
         .context("connect to gateway")?;
 
-    let session_id = client
-        .open_session(OpenSessionOpts {
-            session_id: opts.session,
+    let conversation_id = client
+        .open_session(OpenConversationOpts {
+            conversation_id: opts.session,
             working_dir: opts.working_dir,
         })
         .await
@@ -44,7 +44,7 @@ pub async fn run(opts: TuiOpts<'_>) -> anyhow::Result<()> {
     let out_tx = spawn_bridge(client, server_tx);
 
     let mut terminal = tui::init()?;
-    let result = App::new(session_id, server_rx, out_tx).run(&mut terminal).await;
+    let result = App::new(conversation_id, server_rx, out_tx).run(&mut terminal).await;
     tui::restore(&mut terminal)?;
     result
 }

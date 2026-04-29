@@ -124,17 +124,17 @@ impl Frame {
         }
     }
 
-    /// Creates a notification frame for an event with optional session_id injected into params.
+    /// Creates a notification frame for an event with optional conversation_id injected into params.
     pub fn event<P: Serialize>(
         event_type: &str,
-        session_id: Option<&str>,
+        conversation_id: Option<&str>,
         payload: &P,
     ) -> Self {
         let mut params = serde_json::to_value(payload).unwrap_or(serde_json::Value::Object(Default::default()));
-        if let Some(sid) = session_id
+        if let Some(sid) = conversation_id
             && let Some(obj) = params.as_object_mut()
         {
-            obj.insert("session_id".to_string(), serde_json::Value::String(sid.to_string()));
+            obj.insert("conversation_id".to_string(), serde_json::Value::String(sid.to_string()));
         }
         Self::notification(event_type, &params)
     }
@@ -229,12 +229,12 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ozzie_types::{OpenSessionParams, SendMessageParams, SessionResult, AcceptedResult};
+    use ozzie_types::{OpenConversationParams, SendMessageParams, ConversationResult, AcceptedResult};
 
     #[test]
     fn request_from_enum_roundtrip() {
         let req = Request::SendMessage(SendMessageParams {
-            session_id: "sess_1".to_string(),
+            conversation_id: "sess_1".to_string(),
             text: "hello".to_string(),
             images: Vec::new(),
         });
@@ -252,7 +252,7 @@ mod tests {
         let req_parsed = parsed.parse_request().unwrap();
         match req_parsed {
             Request::SendMessage(p) => {
-                assert_eq!(p.session_id, "sess_1");
+                assert_eq!(p.conversation_id, "sess_1");
                 assert_eq!(p.text, "hello");
             }
             _ => panic!("expected SendMessage"),
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn request_raw_roundtrip() {
-        let frame = Frame::request("req_1", "send_message", &serde_json::json!({"session_id": "s1", "text": "hi"}));
+        let frame = Frame::request("req_1", "send_message", &serde_json::json!({"conversation_id": "s1", "text": "hi"}));
         let bytes = frame.to_bytes().unwrap();
         let parsed = Frame::from_bytes(&bytes).unwrap();
 
@@ -271,8 +271,8 @@ mod tests {
 
     #[test]
     fn response_ok_typed() {
-        let result = SessionResult {
-            session_id: "sess_test".to_string(),
+        let result = ConversationResult {
+            conversation_id: "sess_test".to_string(),
             root_dir: Some("/tmp".to_string()),
         };
         let frame = Frame::response_ok("req_1", &result);
@@ -283,8 +283,8 @@ mod tests {
         assert!(!parsed.is_error());
         assert!(!parsed.is_request());
 
-        let r: SessionResult = parsed.parse_result().unwrap();
-        assert_eq!(r.session_id, "sess_test");
+        let r: ConversationResult = parsed.parse_result().unwrap();
+        assert_eq!(r.conversation_id, "sess_test");
         assert_eq!(r.root_dir.as_deref(), Some("/tmp"));
     }
 
@@ -315,26 +315,26 @@ mod tests {
         assert_eq!(parsed.method.as_deref(), Some("assistant.stream"));
         assert_eq!(parsed.event_kind(), Some(EventKind::AssistantStream));
 
-        // session_id injected into params
+        // conversation_id injected into params
         let params = parsed.params.unwrap();
-        assert_eq!(params["session_id"], "sess_123");
+        assert_eq!(params["conversation_id"], "sess_123");
         assert_eq!(params["content"], "Hello");
     }
 
     #[test]
     fn open_session_request_from_enum() {
-        let req = Request::OpenSession(OpenSessionParams {
+        let req = Request::OpenConversation(OpenConversationParams {
             working_dir: Some("/tmp".to_string()),
             ..Default::default()
         });
         let frame = Frame::from_request("1", &req);
-        assert_eq!(frame.method.as_deref(), Some("open_session"));
+        assert_eq!(frame.method.as_deref(), Some("open_conversation"));
 
         let parsed = frame.parse_request().unwrap();
         match parsed {
-            Request::OpenSession(p) => {
+            Request::OpenConversation(p) => {
                 assert_eq!(p.working_dir.as_deref(), Some("/tmp"));
-                assert!(p.session_id.is_none());
+                assert!(p.conversation_id.is_none());
             }
             _ => panic!("expected OpenSession"),
         }

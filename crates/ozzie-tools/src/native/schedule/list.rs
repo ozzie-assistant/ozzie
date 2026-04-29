@@ -34,7 +34,7 @@ impl ListSchedulesTool {
 struct ListSchedulesInput {
     /// Optional session ID to filter by.
     #[serde(default)]
-    session_id: Option<String>,
+    conversation_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -84,8 +84,8 @@ impl Tool for ListSchedulesTool {
 
         let mut out: Vec<ListScheduleEntry> = Vec::new();
         for e in &entries {
-            if let Some(ref filter_sid) = input.session_id {
-                match &e.session_id {
+            if let Some(ref filter_sid) = input.conversation_id {
+                match &e.conversation_id {
                     Some(sid) if sid == filter_sid => {}
                     _ => continue,
                 }
@@ -150,7 +150,7 @@ mod tests {
                         approved_tools: Vec::new(),
                     },
                 },
-                session_id: Some("s1".to_string()),
+                conversation_id: Some("s1".to_string()),
                 title: "A".to_string(),
                 description: "entry a".to_string(),
                 cron_spec: Some("*/5 * * * *".to_string()),
@@ -178,7 +178,7 @@ mod tests {
                         approved_tools: Vec::new(),
                     },
                 },
-                session_id: Some("s2".to_string()),
+                conversation_id: Some("s2".to_string()),
                 title: "B".to_string(),
                 description: "entry b".to_string(),
                 cron_spec: None,
@@ -199,7 +199,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["count"], 2);
 
-        let result = tool.run(r#"{"session_id":"s1"}"#).await.unwrap();
+        let result = tool.run(r#"{"conversation_id":"s1"}"#).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["count"], 1);
         assert_eq!(parsed["entries"][0]["title"], "A");

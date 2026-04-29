@@ -6,30 +6,34 @@ use tracing::info;
 use ozzie_core::conscience::ToolPermissions;
 use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
 use ozzie_protocol::{error_code, Frame, Request};
-use ozzie_runtime::session::{Session, SessionStore};
+use ozzie_runtime::conversation::{Conversation, ConversationStore};
 use ozzie_types::{
-    AcceptedResult, CancelledResult, MessagePayload, MessagesResult, SessionResult,
+    AcceptedResult, ArchivedResult, CancelledResult, CloseConversationParams,
+    ConversationResult, ConversationSummaryDto, ConversationsListResult,
+    ListConversationsParams, MessagePayload, MessagesResult, NewConversationParams,
+    SwitchConversationParams, SwitchedResult,
 };
 
 use crate::hub::{Hub, HubHandler};
 
 /// Callback to cancel a session's active ReactLoop.
-pub type CancelSessionFn = Arc<dyn Fn(&str) + Send + Sync>;
+pub type CancelConversationFn = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Default handler for WS request frames.
 pub struct RequestHandler {
     bus: Arc<dyn EventBus>,
-    sessions: Arc<dyn SessionStore>,
+    sessions: Arc<dyn ConversationStore>,
     hub: Arc<Hub>,
     permissions: Option<Arc<ToolPermissions>>,
-    cancel_fn: Option<CancelSessionFn>,
+    cancel_fn: Option<CancelConversationFn>,
     blob_store: Option<Arc<dyn ozzie_core::domain::BlobStore>>,
+    conversation_manager: Option<Arc<dyn ozzie_core::domain::ConversationManager>>,
 }
 
 impl RequestHandler {
     pub fn new(
         bus: Arc<dyn EventBus>,
-        sessions: Arc<dyn SessionStore>,
+        sessions: Arc<dyn ConversationStore>,
         hub: Arc<Hub>,
     ) -> Self {
         Self {
@@ -39,6 +43,7 @@ impl RequestHandler {
             permissions: None,
             cancel_fn: None,
             blob_store: None,
+            conversation_manager: None,
         }
     }
 
@@ -52,8 +57,16 @@ impl RequestHandler {
         self
     }
 
-    pub fn with_cancel_fn(mut self, cancel_fn: CancelSessionFn) -> Self {
+    pub fn with_cancel_fn(mut self, cancel_fn: CancelConversationFn) -> Self {
         self.cancel_fn = Some(cancel_fn);
+        self
+    }
+
+    pub fn with_conversation_manager(
+        mut self,
+        manager: Arc<dyn ozzie_core::domain::ConversationManager>,
+    ) -> Self {
+        self.conversation_manager = Some(manager);
         self
     }
 }
@@ -76,13 +89,17 @@ impl HubHandler for RequestHandler {
         };
 
         match request {
-            Request::OpenSession(p) => self.handle_open_session(client_id, &id, p).await,
+            Request::OpenConversation(p) => self.handle_open_session(client_id, &id, p).await,
             Request::SendMessage(p) => self.handle_send_message(&id, p).await,
             Request::SendConnectorMessage(p) => self.handle_send_connector_message(&id, p),
             Request::LoadMessages(p) => self.handle_load_messages(&id, p).await,
             Request::AcceptAllTools(p) => self.handle_accept_all(&id, p),
             Request::PromptResponse(p) => self.handle_prompt_response(&id, p),
-            Request::CancelSession(p) => self.handle_cancel_session(&id, p),
+            Request::CancelConversation(p) => self.handle_cancel_session(&id, p),
+            Request::NewConversation(p) => self.handle_new_conversation(&id, p).await,
+            Request::SwitchConversation(p) => self.handle_switch_conversation(&id, p).await,
+            Request::ListConversations(p) => self.handle_list_conversations(&id, p).await,
+            Request::CloseConversation(p) => self.handle_close_conversation(&id, p).await,
         }
     }
 }
@@ -92,16 +109,29 @@ impl RequestHandler {
         &self,
         client_id: u64,
         req_id: &str,
-        p: ozzie_types::OpenSessionParams,
+        p: ozzie_types::OpenConversationParams,
     ) -> Frame {
-        let session = if let Some(sid) = &p.session_id {
-            match self.sessions.get(sid).await {
-                Ok(Some(s)) => s,
+        // Resolve the conversation id. Explicit id wins, otherwise fall back to
+        // the registry's active conversation, otherwise create a new one.
+        let explicit_id = p.conversation_id.clone();
+        let resolved_id = explicit_id.or_else(|| {
+            self.conversation_manager.as_ref().and_then(|m| m.active())
+        });
+
+        let session = if let Some(sid) = resolved_id {
+            match self.sessions.get(&sid).await {
+                Ok(Some(s)) => {
+                    // Ensure the registry treats this as the active attention.
+                    if let Some(mgr) = self.conversation_manager.as_ref() {
+                        mgr.set_active(&sid);
+                    }
+                    s
+                }
                 Ok(None) => {
                     return Frame::response_err(
                         req_id,
                         error_code::INVALID_PARAMS,
-                        format!("session not found: {sid}"),
+                        format!("conversation not found: {sid}"),
                     );
                 }
                 Err(e) => {
@@ -113,7 +143,7 @@ impl RequestHandler {
                 }
             }
         } else {
-            let mut session = Session::new(
+            let mut session = Conversation::new(
                 ozzie_utils::names::generate_id("sess", &|_: &str| false),
             );
             session.root_dir = p.working_dir;
@@ -124,28 +154,33 @@ impl RequestHandler {
                 return Frame::response_err(
                     req_id,
                     error_code::INTERNAL_ERROR,
-                    format!("create session: {e}"),
+                    format!("create conversation: {e}"),
                 );
             }
 
             self.bus.publish(Event::with_session(
                 EventSource::Hub,
-                EventPayload::SessionCreated {
-                    session_id: session.id.clone(),
+                EventPayload::ConversationCreated {
+                    conversation_id: session.id.clone(),
+                    title: session.title.clone(),
                 },
                 &session.id,
             ));
+
+            if let Some(mgr) = self.conversation_manager.as_ref() {
+                mgr.set_active(&session.id);
+            }
 
             session
         };
 
         self.hub.bind_session(client_id, &session.id);
-        info!(session_id = %session.id, "session opened");
+        info!(conversation_id = %session.id, "session opened");
 
         Frame::response_ok(
             req_id,
-            &SessionResult {
-                session_id: session.id,
+            &ConversationResult {
+                conversation_id: session.id,
                 root_dir: session.root_dir,
             },
         )
@@ -180,7 +215,7 @@ impl RequestHandler {
         self.bus.publish(Event::with_session(
             EventSource::Hub,
             EventPayload::user_message_with_images(p.text, images),
-            &p.session_id,
+            &p.conversation_id,
         ));
 
         Frame::response_ok(req_id, &AcceptedResult { accepted: true })
@@ -221,7 +256,7 @@ impl RequestHandler {
     ) -> Frame {
         let limit = p.limit.min(50) as usize;
 
-        let messages = match self.sessions.load_messages(&p.session_id).await {
+        let messages = match self.sessions.load_messages(&p.conversation_id).await {
             Ok(msgs) => msgs,
             Err(e) => {
                 return Frame::response_err(
@@ -254,7 +289,7 @@ impl RequestHandler {
         p: ozzie_types::AcceptAllToolsParams,
     ) -> Frame {
         if let Some(ref perms) = self.permissions {
-            perms.allow_all_for_session(&p.session_id);
+            perms.allow_all_for_session(&p.conversation_id);
         }
 
         Frame::response_ok(req_id, &AcceptedResult { accepted: true })
@@ -280,10 +315,10 @@ impl RequestHandler {
     fn handle_cancel_session(
         &self,
         req_id: &str,
-        p: ozzie_types::CancelSessionParams,
+        p: ozzie_types::CancelConversationParams,
     ) -> Frame {
         if let Some(ref cancel) = self.cancel_fn {
-            cancel(&p.session_id);
+            cancel(&p.conversation_id);
         }
 
         self.bus.publish(Event::with_session(
@@ -291,10 +326,130 @@ impl RequestHandler {
             EventPayload::AgentCancelled {
                 reason: "user_request".to_string(),
             },
-            &p.session_id,
+            &p.conversation_id,
         ));
 
         Frame::response_ok(req_id, &CancelledResult { cancelled: true })
+    }
+
+    fn manager_not_configured(&self, req_id: &str) -> Frame {
+        Frame::response_err(
+            req_id,
+            error_code::INTERNAL_ERROR,
+            "conversation manager not configured".to_string(),
+        )
+    }
+
+    async fn handle_new_conversation(
+        &self,
+        req_id: &str,
+        p: NewConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        match manager.create(p.title).await {
+            Ok(id) => Frame::response_ok(
+                req_id,
+                &ConversationResult {
+                    conversation_id: id,
+                    root_dir: None,
+                },
+            ),
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("create conversation: {e}"),
+            ),
+        }
+    }
+
+    async fn handle_switch_conversation(
+        &self,
+        req_id: &str,
+        p: SwitchConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        let previous = manager.set_active(&p.conversation_id);
+        Frame::response_ok(
+            req_id,
+            &SwitchedResult {
+                conversation_id: p.conversation_id,
+                previous,
+            },
+        )
+    }
+
+    async fn handle_list_conversations(
+        &self,
+        req_id: &str,
+        p: ListConversationsParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        match manager.list().await {
+            Ok(mut summaries) => {
+                if !p.include_archived {
+                    summaries.retain(|s| {
+                        matches!(
+                            s.status,
+                            ozzie_core::domain::ConversationStatus::Active
+                        )
+                    });
+                }
+                let dto: Vec<ConversationSummaryDto> = summaries
+                    .into_iter()
+                    .map(|s| ConversationSummaryDto {
+                        id: s.id,
+                        title: s.title,
+                        status: s.status.to_string(),
+                        message_count: s.message_count,
+                        updated_at: s.updated_at.to_rfc3339(),
+                        is_active: s.is_active,
+                    })
+                    .collect();
+                Frame::response_ok(req_id, &ConversationsListResult { conversations: dto })
+            }
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("list conversations: {e}"),
+            ),
+        }
+    }
+
+    async fn handle_close_conversation(
+        &self,
+        req_id: &str,
+        p: CloseConversationParams,
+    ) -> Frame {
+        let Some(manager) = self.conversation_manager.as_ref() else {
+            return self.manager_not_configured(req_id);
+        };
+        let id = match p.conversation_id {
+            Some(id) => id,
+            None => match manager.active() {
+                Some(id) => id,
+                None => {
+                    return Frame::response_err(
+                        req_id,
+                        error_code::INVALID_PARAMS,
+                        "no active conversation to close".to_string(),
+                    );
+                }
+            },
+        };
+        match manager.archive(&id).await {
+            Ok(()) => Frame::response_ok(req_id, &ArchivedResult { archived: id }),
+            Err(e) => Frame::response_err(
+                req_id,
+                error_code::INTERNAL_ERROR,
+                format!("archive conversation: {e}"),
+            ),
+        }
     }
 }
 
@@ -302,7 +457,7 @@ impl RequestHandler {
 mod tests {
     use super::*;
     use ozzie_core::events::Bus;
-    use ozzie_runtime::session::InMemorySessionStore;
+    use ozzie_runtime::conversation::InMemoryConversationStore;
 
     struct NoopHandler;
 
@@ -315,11 +470,11 @@ mod tests {
 
     fn make_handler() -> (RequestHandler, Arc<Bus>) {
         let bus = Arc::new(Bus::new(64));
-        let sessions = Arc::new(InMemorySessionStore::new());
+        let sessions = Arc::new(InMemoryConversationStore::new());
         let hub = Hub::new(bus.clone(), Arc::new(NoopHandler) as Arc<dyn HubHandler>);
         let handler = RequestHandler::new(
             bus.clone() as Arc<dyn EventBus>,
-            sessions as Arc<dyn SessionStore>,
+            sessions as Arc<dyn ConversationStore>,
             hub,
         );
         (handler, bus)
@@ -333,7 +488,7 @@ mod tests {
         let frame = Frame::request(
             "r1",
             "send_message",
-            &serde_json::json!({"session_id": "sess_1", "text": "hello"}),
+            &serde_json::json!({"conversation_id": "sess_1", "text": "hello"}),
         );
         let resp = handler.handle_request(0, frame).await;
 
@@ -434,14 +589,14 @@ mod tests {
     async fn open_session_creates_session() {
         let (handler, _bus) = make_handler();
 
-        let frame = Frame::request("r1", "open_session", &serde_json::json!({}));
+        let frame = Frame::request("r1", "open_conversation", &serde_json::json!({}));
         let resp = handler.handle_request(0, frame).await;
 
         assert!(!resp.is_error());
         let sid = resp
             .result
             .as_ref()
-            .and_then(|r| r.get("session_id"))
+            .and_then(|r| r.get("conversation_id"))
             .and_then(|v| v.as_str());
         assert!(sid.is_some());
         assert!(sid.unwrap().starts_with("sess_"));

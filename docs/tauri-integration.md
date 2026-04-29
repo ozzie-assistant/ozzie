@@ -33,20 +33,20 @@ All messages are JSON text frames. Three message types:
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `open_session` | `{session_id?, working_dir?, language?, model?}` | `{session_id, root_dir?}` | Create/resume session |
-| `send_message` | `{session_id, text, images?}` | `{accepted: true}` | Send user message (triggers LLM) |
+| `open_session` | `{conversation_id?, working_dir?, language?, model?}` | `{conversation_id, root_dir?}` | Create/resume session |
+| `send_message` | `{conversation_id, text, images?}` | `{accepted: true}` | Send user message (triggers LLM) |
 | `send_connector_message` | `{connector, channel_id, author, content, message_id?}` | `{accepted: true}` | Route connector message |
-| `load_messages` | `{session_id, limit?}` | `{messages: [...]}` | Load conversation history |
-| `accept_all_tools` | `{session_id}` | `{accepted: true}` | Auto-approve all tools |
+| `load_messages` | `{conversation_id, limit?}` | `{messages: [...]}` | Load conversation history |
+| `accept_all_tools` | `{conversation_id}` | `{accepted: true}` | Auto-approve all tools |
 | `prompt_response` | `{token, value?, text?}` | `{accepted: true}` | Reply to prompt |
-| `cancel_session` | `{session_id}` | `{cancelled: true}` | Cancel active ReactLoop |
+| `cancel_session` | `{conversation_id}` | `{cancelled: true}` | Cancel active ReactLoop |
 
 ### Image Attachments
 
 `send_message` supports multimodal input:
 ```json
 {
-  "session_id": "sess_xyz",
+  "conversation_id": "sess_xyz",
   "text": "What's in this image?",
   "images": [
     { "base64": "iVBORw0K...", "media_type": "image/png", "alt": "screenshot" }
@@ -60,27 +60,27 @@ All messages are JSON text frames. Three message types:
 
 | Event | Params | Description |
 |-------|--------|-------------|
-| `assistant.stream` | `{session_id, phase, content, index}` | Streaming LLM output. Phase: `start` / `delta` / `end` |
-| `assistant.message` | `{session_id, content, error?}` | Final complete response |
-| `prompt.request` | `{session_id, prompt_type, label, token, options}` | Needs user input → reply with `prompt_response` |
+| `assistant.stream` | `{conversation_id, phase, content, index}` | Streaming LLM output. Phase: `start` / `delta` / `end` |
+| `assistant.message` | `{conversation_id, content, error?}` | Final complete response |
+| `prompt.request` | `{conversation_id, prompt_type, label, token, options}` | Needs user input → reply with `prompt_response` |
 
 #### Tier 2 — Recommended
 
 | Event | Params | Description |
 |-------|--------|-------------|
-| `tool.call` | `{session_id, call_id, tool, arguments}` | Tool invocation started |
-| `tool.result` | `{session_id, call_id, tool, result, is_error}` | Tool execution result |
-| `tool.progress` | `{session_id, call_id, tool, message}` | Progress update |
-| `agent.cancelled` | `{session_id, reason}` | ReactLoop cancelled |
-| `agent.yielded` | `{session_id, reason, resume_on?}` | Agent yielded (`done` / `waiting` / `checkpoint`) |
+| `tool.call` | `{conversation_id, call_id, tool, arguments}` | Tool invocation started |
+| `tool.result` | `{conversation_id, call_id, tool, result, is_error}` | Tool execution result |
+| `tool.progress` | `{conversation_id, call_id, tool, message}` | Progress update |
+| `agent.cancelled` | `{conversation_id, reason}` | ReactLoop cancelled |
+| `agent.yielded` | `{conversation_id, reason, resume_on?}` | Agent yielded (`done` / `waiting` / `checkpoint`) |
 
 #### Tier 3 — Optional
 
 | Event | Params | Description |
 |-------|--------|-------------|
-| `session.created` / `session.closed` | `{session_id}` | Session lifecycle |
-| `skill.started` / `skill.completed` | `{session_id, ...}` | Skill execution |
-| `internal.llm.call` | `{session_id, phase, tokens_input, tokens_output}` | LLM telemetry |
+| `session.created` / `session.closed` | `{conversation_id}` | Session lifecycle |
+| `skill.started` / `skill.completed` | `{conversation_id, ...}` | Skill execution |
+| `internal.llm.call` | `{conversation_id, phase, tokens_input, tokens_output}` | LLM telemetry |
 | `dream.completed` | `{sessions_processed, memories_created, ...}` | Consolidation done |
 
 ### Typical Flows
@@ -178,7 +178,7 @@ $OZZIE_PATH/
 │   │   └── {slug}.md
 │   ├── {slug}_{id}.md        # Memory entries (markdown SsoT)
 │   └── .cache/memory.db      # SQLite FTS5 index
-├── sessions/                 # Session history
+├── conversations/                 # Session history
 ├── logs/                     # Event logs (JSONL)
 └── skills/                   # Installed skills
 ```

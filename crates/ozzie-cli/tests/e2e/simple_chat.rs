@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ozzie_client::OpenSessionOpts;
+use ozzie_client::OpenConversationOpts;
 
 use crate::harness::{
     collect_until_assistant_message, extract_assistant_text, TestGateway, TestGatewayConfig,
@@ -19,8 +19,8 @@ async fn simple_chat_returns_answer() {
 
     let mut client = gw.connect().await;
     client
-        .open_session(OpenSessionOpts {
-            session_id: None,
+        .open_session(OpenConversationOpts {
+            conversation_id: None,
             working_dir: None,
         })
         .await

@@ -1,4 +1,5 @@
 mod activate;
+mod conversation;
 mod editor;
 mod execute;
 mod file;
@@ -15,6 +16,9 @@ mod web;
 mod yield_control;
 
 pub use activate::ActivateTool;
+pub use conversation::{
+    CloseConversationTool, ListConversationsTool, NewConversationTool, SwitchConversationTool,
+};
 pub use editor::StrReplaceEditorTool;
 pub use execute::ExecuteTool;
 pub use file::{FileReadTool, FileWriteTool, GlobTool, GrepTool, ListDirTool};
@@ -155,7 +159,7 @@ pub fn register_subtask_tool(
 /// Registers the update_session tool with a shared session store.
 pub fn register_session_tools(
     registry: &ToolRegistry,
-    store: std::sync::Arc<dyn ozzie_core::domain::SessionStore>,
+    store: std::sync::Arc<dyn ozzie_core::domain::ConversationStore>,
 ) {
     register(
         registry,
@@ -164,12 +168,39 @@ pub fn register_session_tools(
     );
 }
 
+/// Registers the four conversation control tools (new / switch / list / close).
+pub fn register_conversation_tools(
+    registry: &ToolRegistry,
+    manager: std::sync::Arc<dyn ozzie_core::domain::ConversationManager>,
+) {
+    register(
+        registry,
+        Box::new(NewConversationTool::new(manager.clone())),
+        NewConversationTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(SwitchConversationTool::new(manager.clone())),
+        SwitchConversationTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(ListConversationsTool::new(manager.clone())),
+        ListConversationsTool::spec(),
+    );
+    register(
+        registry,
+        Box::new(CloseConversationTool::new(manager)),
+        CloseConversationTool::spec(),
+    );
+}
+
 /// Registers the create_skill tool.
 pub fn register_create_skill_tool(
     registry: &ToolRegistry,
     skill_registry: std::sync::Arc<ozzie_core::skills::SkillRegistry>,
     project_registry: std::sync::Arc<ozzie_core::project::ProjectRegistry>,
-    session_store: std::sync::Arc<dyn ozzie_core::domain::SessionStore>,
+    session_store: std::sync::Arc<dyn ozzie_core::domain::ConversationStore>,
     skills_path: std::path::PathBuf,
 ) {
     register(
@@ -189,7 +220,7 @@ pub fn register_project_tools(
     registry: &ToolRegistry,
     project_registry: std::sync::Arc<ozzie_core::project::ProjectRegistry>,
     skill_registry: std::sync::Arc<ozzie_core::skills::SkillRegistry>,
-    session_store: std::sync::Arc<dyn ozzie_core::domain::SessionStore>,
+    session_store: std::sync::Arc<dyn ozzie_core::domain::ConversationStore>,
     workspaces_root: std::path::PathBuf,
 ) {
     register(

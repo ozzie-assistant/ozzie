@@ -9,7 +9,7 @@ use ozzie_core::prompt;
 use ozzie_llm::providers::{OllamaProvider, OpenAIProvider};
 use ozzie_llm::{AuthKind, Provider, ResolvedAuth};
 use ozzie_protocol::EventKind;
-use ozzie_runtime::{EventRunner, EventRunnerConfig, FileSessionStore};
+use ozzie_runtime::{EventRunner, EventRunnerConfig, FileConversationStore};
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 
@@ -129,7 +129,7 @@ impl HubHandler for NoopHandler {
 pub struct TestGateway {
     pub port: u16,
     pub bus: Arc<dyn EventBus>,
-    pub sessions: Arc<FileSessionStore>,
+    pub sessions: Arc<FileConversationStore>,
     pub tempdir: TempDir,
 }
 
@@ -142,9 +142,9 @@ pub struct TestGatewayConfig {
 impl TestGateway {
     pub async fn start(config: TestGatewayConfig) -> Self {
         let tempdir = TempDir::new().expect("create tempdir");
-        let sessions_dir = tempdir.path().join("sessions");
+        let conversations_dir = tempdir.path().join("sessions");
         let sessions = Arc::new(
-            FileSessionStore::new(&sessions_dir).expect("create session store"),
+            FileConversationStore::new(&conversations_dir).expect("create session store"),
         );
         let bus = Arc::new(Bus::new(256));
 
@@ -161,9 +161,12 @@ impl TestGateway {
         let blob_store_for_runner = config.blob_store.clone();
 
         // EventRunner — minimal config, no dangerous tool wrapping
+        let sessions_dyn = sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>;
+        let conversation_registry =
+            Arc::new(ozzie_runtime::ConversationRegistry::new(sessions_dyn.clone()));
         let runner = Arc::new(EventRunner::with_config(EventRunnerConfig {
             bus: bus.clone(),
-            sessions: sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions: sessions_dyn,
             provider: config.provider,
             persona: prompt::DEFAULT_PERSONA.to_string(),
             agent_instructions: prompt::AGENT_INSTRUCTIONS.to_string(),
@@ -184,6 +187,7 @@ impl TestGateway {
             user_profile: None,
             blob_store: blob_store_for_runner,
             project_registry: None,
+            conversation_registry,
         }));
         runner.start();
 
@@ -192,7 +196,7 @@ impl TestGateway {
         let hub = Hub::new(bus.clone(), placeholder);
         let mut handler = RequestHandler::new(
             bus.clone(),
-            sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>,
+            sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>,
             hub.clone(),
         )
         .with_permissions(permissions);
@@ -211,7 +215,7 @@ impl TestGateway {
             hub,
             bus: bus.clone() as Arc<dyn EventBus>,
             authenticator: None,
-            sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::SessionStore>),
+            sessions: Some(sessions.clone() as Arc<dyn ozzie_runtime::ConversationStore>),
             pairing_manager: None,
             chat_storage: None,
             device_storage: None,

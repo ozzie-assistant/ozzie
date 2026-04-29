@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, info, warn};
 
-use ozzie_client::{ClientError, EventKind, OzzieClient, OpenSessionOpts, PromptResponseParams};
+use ozzie_client::{ClientError, EventKind, OzzieClient, OpenConversationOpts, PromptResponseParams};
 
 /// Configuration as deserialized from `config.connectors.file`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,9 +119,9 @@ impl FileBridge {
             .map_err(|e| format!("file connector: connect: {e}"))?;
 
         // Open a dedicated session for this connector
-        let session_id = client
-            .open_session(OpenSessionOpts {
-                session_id: None,
+        let conversation_id = client
+            .open_session(OpenConversationOpts {
+                conversation_id: None,
                 working_dir: None,
             })
             .await
@@ -133,7 +133,7 @@ impl FileBridge {
         }
 
         info!(
-            session_id = %session_id,
+            conversation_id = %conversation_id,
             input = %self.config.input,
             output = %self.config.output,
             "file connector bridge started"

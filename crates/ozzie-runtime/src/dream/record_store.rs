@@ -18,7 +18,7 @@ impl DreamRecordStore {
         }
     }
 
-    /// Loads all records, keyed by session_id.
+    /// Loads all records, keyed by conversation_id.
     pub fn load_all(&self) -> HashMap<String, DreamRecord> {
         match std::fs::read_to_string(&self.path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
@@ -29,7 +29,7 @@ impl DreamRecordStore {
         }
     }
 
-    /// Saves a single record (upserts by session_id).
+    /// Saves a single record (upserts by conversation_id).
     pub fn save(&self, record: &DreamRecord) -> anyhow::Result<()> {
         let mut all = self.load_all();
         all.insert(record.session_id.clone(), record.clone());

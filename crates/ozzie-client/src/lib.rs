@@ -2,7 +2,7 @@ mod connection;
 mod credential;
 mod event;
 
-pub use connection::{ClientError, OzzieClient, OpenSessionOpts, PairingRequest, PairingStatus};
+pub use connection::{ClientError, OzzieClient, OpenConversationOpts, PairingRequest, PairingStatus};
 
 pub use credential::{Credential, CredentialError, CredentialStore, FileCredentialStore, MemoryCredentialStore};
 pub use event::ClientEvent;

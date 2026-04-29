@@ -64,12 +64,12 @@ impl ApprovalResponse {
 }
 
 /// Callback to request approval from the user.
-/// Receives (session_id, tool_name, arguments) and returns the approval response.
+/// Receives (conversation_id, tool_name, arguments) and returns the approval response.
 #[async_trait::async_trait]
 pub trait ApprovalRequester: Send + Sync {
     async fn request_approval(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         tool_name: &str,
         arguments: &str,
     ) -> Result<ApprovalResponse, ToolError>;
@@ -149,12 +149,12 @@ impl Tool for DangerousToolWrapper {
     }
 
     async fn run(&self, arguments_json: &str) -> Result<String, ToolError> {
-        // Get session_id from task-local context
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        // Get conversation_id from task-local context
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .unwrap_or_default();
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             // No session context — cannot prompt, deny by default
             return Err(ToolError::Execution(format!(
                 "tool '{}' requires approval but no session context is available",
@@ -163,14 +163,14 @@ impl Tool for DangerousToolWrapper {
         }
 
         // Check if already approved
-        if self.permissions.is_allowed(&session_id, &self.tool_name) {
+        if self.permissions.is_allowed(&conversation_id, &self.tool_name) {
             return self.inner.run(arguments_json).await;
         }
 
         // Request approval
         let response = self
             .approver
-            .request_approval(&session_id, &self.tool_name, arguments_json)
+            .request_approval(&conversation_id, &self.tool_name, arguments_json)
             .await?;
 
         match response {
@@ -181,20 +181,20 @@ impl Tool for DangerousToolWrapper {
                         tool: self.tool_name.clone(),
                         decision: "allow_once".to_string(),
                     },
-                    &session_id,
+                    &conversation_id,
                 ));
                 self.inner.run(arguments_json).await
             }
             ApprovalResponse::AllowSession => {
                 self.permissions
-                    .allow_for_session(&session_id, &self.tool_name);
+                    .allow_for_session(&conversation_id, &self.tool_name);
                 self.bus.publish(Event::with_session(
                     EventSource::Agent,
                     EventPayload::ToolApproved {
                         tool: self.tool_name.clone(),
                         decision: "allow_session".to_string(),
                     },
-                    &session_id,
+                    &conversation_id,
                 ));
                 self.inner.run(arguments_json).await
             }
@@ -242,10 +242,10 @@ mod tests {
         }
     }
 
-    struct SessionApprover;
+    struct ConversationApprover;
 
     #[async_trait::async_trait]
-    impl ApprovalRequester for SessionApprover {
+    impl ApprovalRequester for ConversationApprover {
         async fn request_approval(
             &self,
             _session_id: &str,
@@ -283,7 +283,7 @@ mod tests {
     async fn allow_once_executes() {
         let wrapper = make_wrapper(Arc::new(AlwaysAllowApprover));
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let result = TOOL_CTX
@@ -304,11 +304,11 @@ mod tests {
             "mock_cmd",
             perms.clone(),
             bus,
-            Arc::new(SessionApprover),
+            Arc::new(ConversationApprover),
         );
 
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let result = TOOL_CTX
@@ -324,7 +324,7 @@ mod tests {
     async fn deny_blocks_execution() {
         let wrapper = make_wrapper(Arc::new(DenyApprover));
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let result = TOOL_CTX
@@ -354,7 +354,7 @@ mod tests {
         );
 
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let result = TOOL_CTX
@@ -380,7 +380,7 @@ mod tests {
         );
 
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let result = TOOL_CTX
@@ -449,11 +449,11 @@ mod tests {
             "mock_cmd",
             perms,
             bus,
-            Arc::new(SessionApprover),
+            Arc::new(ConversationApprover),
         );
 
         let ctx = ToolContext {
-            session_id: "s1".to_string(),
+            conversation_id: "s1".to_string(),
             ..Default::default()
         };
         let _ = TOOL_CTX
@@ -469,7 +469,7 @@ mod tests {
             }
             _ => panic!("expected ToolApproved"),
         }
-        assert_eq!(event.session_id.as_deref(), Some("s1"));
+        assert_eq!(event.conversation_id.as_deref(), Some("s1"));
     }
 
     #[test]

@@ -23,7 +23,7 @@ impl EventBusApprovalRequester {
 impl ApprovalRequester for EventBusApprovalRequester {
     async fn request_approval(
         &self,
-        session_id: &str,
+        conversation_id: &str,
         tool_name: &str,
         arguments: &str,
     ) -> Result<ApprovalResponse, ToolError> {
@@ -44,7 +44,7 @@ impl ApprovalRequester for EventBusApprovalRequester {
                 token: token.clone(),
                 options: ApprovalResponse::prompt_options(),
             },
-            session_id,
+            conversation_id,
         ));
 
         // Wait for a matching response
@@ -293,7 +293,7 @@ mod tests {
 
         // Verify prompt structure
         assert_eq!(req.event_type(), "prompt.request");
-        assert_eq!(req.session_id.as_deref(), Some("s1"));
+        assert_eq!(req.conversation_id.as_deref(), Some("s1"));
 
         let (label, options) = match &req.payload {
             EventPayload::PromptRequest {

@@ -6,9 +6,9 @@ use crate::common::MessagePayload;
 
 /// Parameters for `open_session`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct OpenSessionParams {
+pub struct OpenConversationParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
+    pub conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,7 +32,7 @@ pub struct ImageAttachment {
 /// Parameters for `send_message`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageParams {
-    pub session_id: String,
+    pub conversation_id: String,
     pub text: String,
     /// Optional image attachments.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -42,7 +42,7 @@ pub struct SendMessageParams {
 /// Parameters for `load_messages`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadMessagesParams {
-    pub session_id: String,
+    pub conversation_id: String,
     #[serde(default = "default_load_limit")]
     pub limit: u64,
 }
@@ -54,7 +54,7 @@ fn default_load_limit() -> u64 {
 /// Parameters for `accept_all_tools`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcceptAllToolsParams {
-    pub session_id: String,
+    pub conversation_id: String,
 }
 
 /// Parameters for `send_connector_message`.
@@ -79,8 +79,8 @@ pub struct SendConnectorMessageParams {
 
 /// Parameters for `cancel_session`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CancelSessionParams {
-    pub session_id: String,
+pub struct CancelConversationParams {
+    pub conversation_id: String,
 }
 
 /// Parameters for `prompt_response`.
@@ -97,8 +97,8 @@ pub struct PromptResponseParams {
 
 /// Result for `open_session`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionResult {
-    pub session_id: String,
+pub struct ConversationResult {
+    pub conversation_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_dir: Option<String>,
 }
@@ -119,4 +119,66 @@ pub struct CancelledResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessagesResult {
     pub messages: Vec<MessagePayload>,
+}
+
+// ---- Conversation control ----
+
+/// Parameters for `new_conversation`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NewConversationParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// Parameters for `switch_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchConversationParams {
+    pub conversation_id: String,
+}
+
+/// Parameters for `list_conversations`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListConversationsParams {
+    #[serde(default)]
+    pub include_archived: bool,
+}
+
+/// Parameters for `close_conversation`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CloseConversationParams {
+    /// Id of the conversation to archive. Defaults to the active one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+}
+
+/// Result for `switch_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchedResult {
+    pub conversation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<String>,
+}
+
+/// Result for `close_conversation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedResult {
+    pub archived: String,
+}
+
+/// Summary of a conversation as returned by `list_conversations`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSummaryDto {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub status: String,
+    pub message_count: usize,
+    pub updated_at: String,
+    pub is_active: bool,
+}
+
+/// Result for `list_conversations`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationsListResult {
+    pub conversations: Vec<ConversationSummaryDto>,
 }

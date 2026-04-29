@@ -22,8 +22,8 @@ pub enum PairingStatus {
 }
 
 /// Options for opening a session.
-pub struct OpenSessionOpts<'a> {
-    pub session_id: Option<&'a str>,
+pub struct OpenConversationOpts<'a> {
+    pub conversation_id: Option<&'a str>,
     pub working_dir: Option<&'a str>,
 }
 
@@ -62,7 +62,7 @@ pub struct OzzieClient {
         >,
     >,
     req_counter: AtomicU64,
-    session_id: Option<String>,
+    conversation_id: Option<String>,
     /// Buffer for frames received during request() that weren't the expected response.
     pending_frames: Vec<Frame>,
 }
@@ -143,46 +143,46 @@ impl OzzieClient {
             sink,
             stream,
             req_counter: AtomicU64::new(1),
-            session_id: None,
+            conversation_id: None,
             pending_frames: Vec::new(),
         })
     }
 
     /// Returns the current session ID if one has been opened.
-    pub fn session_id(&self) -> Option<&str> {
-        self.session_id.as_deref()
+    pub fn conversation_id(&self) -> Option<&str> {
+        self.conversation_id.as_deref()
     }
 
     /// Opens or resumes a session.
-    pub async fn open_session(&mut self, opts: OpenSessionOpts<'_>) -> Result<String, ClientError> {
+    pub async fn open_session(&mut self, opts: OpenConversationOpts<'_>) -> Result<String, ClientError> {
         let mut params = serde_json::json!({});
-        if let Some(sid) = opts.session_id {
-            params["session_id"] = serde_json::json!(sid);
+        if let Some(sid) = opts.conversation_id {
+            params["conversation_id"] = serde_json::json!(sid);
         }
         if let Some(dir) = opts.working_dir {
             params["working_dir"] = serde_json::json!(dir);
         }
 
-        let resp = self.request("open_session", params).await?;
+        let resp = self.request("open_conversation", params).await?;
         let sid = resp
             .result
             .as_ref()
-            .and_then(|p| p.get("session_id"))
+            .and_then(|p| p.get("conversation_id"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        self.session_id = Some(sid.clone());
+        self.conversation_id = Some(sid.clone());
         Ok(sid)
     }
 
     /// Sends a text message in the current session.
     pub async fn send_message(&mut self, text: &str) -> Result<(), ClientError> {
-        let session_id = self
-            .session_id
+        let conversation_id = self
+            .conversation_id
             .as_deref()
             .ok_or_else(|| ClientError::Other("no session open".to_string()))?;
-        let params = serde_json::json!({ "session_id": session_id, "text": text });
+        let params = serde_json::json!({ "conversation_id": conversation_id, "text": text });
         self.request("send_message", params).await?;
         Ok(())
     }
@@ -193,12 +193,12 @@ impl OzzieClient {
         text: &str,
         images: Vec<ozzie_types::ImageAttachment>,
     ) -> Result<(), ClientError> {
-        let session_id = self
-            .session_id
+        let conversation_id = self
+            .conversation_id
             .as_deref()
             .ok_or_else(|| ClientError::Other("no session open".to_string()))?;
         let params = serde_json::json!({
-            "session_id": session_id,
+            "conversation_id": conversation_id,
             "text": text,
             "images": images,
         });
@@ -235,6 +235,79 @@ impl OzzieClient {
         Ok(())
     }
 
+    /// Creates a new conversation and makes it active.
+    pub async fn new_conversation(&mut self, title: Option<&str>) -> Result<String, ClientError> {
+        let mut params = serde_json::json!({});
+        if let Some(t) = title {
+            params["title"] = serde_json::json!(t);
+        }
+        let resp = self.request("new_conversation", params).await?;
+        let id = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("conversation_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        self.conversation_id = Some(id.clone());
+        Ok(id)
+    }
+
+    /// Switches the active conversation. Returns the previous active id if any.
+    pub async fn switch_conversation(
+        &mut self,
+        conversation_id: &str,
+    ) -> Result<Option<String>, ClientError> {
+        let params = serde_json::json!({ "conversation_id": conversation_id });
+        let resp = self.request("switch_conversation", params).await?;
+        let previous = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("previous"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        self.conversation_id = Some(conversation_id.to_string());
+        Ok(previous)
+    }
+
+    /// Lists known conversations (most recent first).
+    pub async fn list_conversations(
+        &mut self,
+        include_archived: bool,
+    ) -> Result<Vec<ozzie_types::ConversationSummaryDto>, ClientError> {
+        let params = serde_json::json!({ "include_archived": include_archived });
+        let resp = self.request("list_conversations", params).await?;
+        let raw = resp
+            .result
+            .ok_or_else(|| ClientError::Other("missing result".into()))?;
+        let parsed: ozzie_types::ConversationsListResult = serde_json::from_value(raw)
+            .map_err(|e| ClientError::Other(format!("parse list result: {e}")))?;
+        Ok(parsed.conversations)
+    }
+
+    /// Archives a conversation. Defaults to the active one when `conversation_id` is `None`.
+    pub async fn close_conversation(
+        &mut self,
+        conversation_id: Option<&str>,
+    ) -> Result<String, ClientError> {
+        let mut params = serde_json::json!({});
+        if let Some(id) = conversation_id {
+            params["conversation_id"] = serde_json::json!(id);
+        }
+        let resp = self.request("close_conversation", params).await?;
+        let id = resp
+            .result
+            .as_ref()
+            .and_then(|p| p.get("archived"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if self.conversation_id.as_deref() == Some(id.as_str()) {
+            self.conversation_id = None;
+        }
+        Ok(id)
+    }
+
     /// Reads the next frame from the server.
     /// Returns buffered frames first (from request() overflow), then reads from WS.
     pub async fn read_frame(&mut self) -> Result<Frame, ClientError> {
@@ -257,13 +330,13 @@ impl OzzieClient {
 
     /// Accepts all dangerous tools for the current session.
     pub async fn accept_all_tools(&mut self) -> Result<(), ClientError> {
-        let session_id = self
-            .session_id
+        let conversation_id = self
+            .conversation_id
             .as_deref()
             .ok_or_else(|| ClientError::Other("no session open".to_string()))?;
         self.request(
             "accept_all_tools",
-            serde_json::json!({ "session_id": session_id }),
+            serde_json::json!({ "conversation_id": conversation_id }),
         )
         .await?;
         Ok(())
@@ -274,11 +347,11 @@ impl OzzieClient {
         &mut self,
         limit: Option<usize>,
     ) -> Result<Vec<serde_json::Value>, ClientError> {
-        let session_id = self
-            .session_id
+        let conversation_id = self
+            .conversation_id
             .as_deref()
             .ok_or_else(|| ClientError::Other("no session open".to_string()))?;
-        let mut params = serde_json::json!({ "session_id": session_id });
+        let mut params = serde_json::json!({ "conversation_id": conversation_id });
         if let Some(n) = limit {
             params["limit"] = serde_json::json!(n);
         }

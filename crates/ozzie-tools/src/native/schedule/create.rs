@@ -117,8 +117,8 @@ impl Tool for ScheduleTaskTool {
             }
         });
 
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .ok()
             .filter(|s| !s.is_empty());
 
@@ -136,7 +136,7 @@ impl Tool for ScheduleTaskTool {
                     approved_tools: Vec::new(),
                 },
             },
-            session_id,
+            conversation_id,
             title: input.title.clone(),
             description: input.description.clone(),
             cron_spec: input.cron.clone(),
@@ -178,13 +178,13 @@ mod tests {
     use super::super::testutil::{make_bus, make_scheduler};
     use ozzie_core::domain::ToolContext;
 
-    async fn with_session<F, Fut>(session_id: &str, f: F) -> Result<String, ToolError>
+    async fn with_session<F, Fut>(conversation_id: &str, f: F) -> Result<String, ToolError>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<String, ToolError>>,
     {
         let ctx = ToolContext {
-            session_id: session_id.to_string(),
+            conversation_id: conversation_id.to_string(),
             ..Default::default()
         };
         TOOL_CTX.scope(ctx, f()).await

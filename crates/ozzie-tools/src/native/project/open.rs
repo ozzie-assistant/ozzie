@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ozzie_core::domain::{SessionStore, Tool, ToolError, ToolInfo, TOOL_CTX};
+use ozzie_core::domain::{ConversationStore, Tool, ToolError, ToolInfo, TOOL_CTX};
 use ozzie_core::project::ProjectRegistry;
 use ozzie_core::skills::{FsSkillRepository, SkillRegistry, SkillRepository};
 use schemars::JsonSchema;
@@ -12,14 +12,14 @@ use crate::registry::{schema_for, ToolSpec};
 pub struct OpenProjectTool {
     project_registry: Arc<ProjectRegistry>,
     skill_registry: Arc<SkillRegistry>,
-    session_store: Arc<dyn SessionStore>,
+    session_store: Arc<dyn ConversationStore>,
 }
 
 impl OpenProjectTool {
     pub fn new(
         project_registry: Arc<ProjectRegistry>,
         skill_registry: Arc<SkillRegistry>,
-        session_store: Arc<dyn SessionStore>,
+        session_store: Arc<dyn ConversationStore>,
     ) -> Self {
         Self {
             project_registry,
@@ -74,20 +74,20 @@ impl Tool for OpenProjectTool {
             .ok_or_else(|| ToolError::Execution(format!("project not found: {}", input.name)))?;
 
         // Update session: set project_id and root_dir
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .unwrap_or_default();
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             return Err(ToolError::Execution("no session in context".to_string()));
         }
 
         let mut session = self
             .session_store
-            .get(&session_id)
+            .get(&conversation_id)
             .await
             .map_err(|e| ToolError::Execution(format!("get session: {e}")))?
-            .ok_or_else(|| ToolError::Execution(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| ToolError::Execution(format!("session not found: {conversation_id}")))?;
 
         session.project_id = Some(project.name.clone());
         session.root_dir = Some(project.path.clone());

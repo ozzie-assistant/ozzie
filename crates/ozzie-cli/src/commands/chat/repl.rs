@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Write as IoWrite};
 
 use ozzie_client::{
-    ClientError, EventKind, OpenSessionOpts, OzzieClient, PromptRequestPayload,
+    ClientError, EventKind, OpenConversationOpts, OzzieClient, PromptRequestPayload,
     PromptResponseParams,
 };
 use ozzie_utils::config::ozzie_path;
@@ -15,14 +15,14 @@ pub async fn run(args: ChatArgs) -> anyhow::Result<()> {
     let token = OzzieClient::acquire_token_cli(&args.gateway, &ozzie_path()).await?;
     let mut client = OzzieClient::connect(&args.gateway, Some(&token)).await?;
 
-    let session_id = client
-        .open_session(OpenSessionOpts {
-            session_id: args.session.as_deref(),
+    let conversation_id = client
+        .open_session(OpenConversationOpts {
+            conversation_id: args.session.as_deref(),
             working_dir: args.working_dir.as_deref(),
         })
         .await?;
 
-    eprintln!("Connected — session {session_id}");
+    eprintln!("Connected — session {conversation_id}");
     eprintln!("Type /quit to exit.\n");
 
     if args.accept_all {
@@ -49,7 +49,7 @@ pub async fn run(args: ChatArgs) -> anyhow::Result<()> {
 
         // Slash commands
         if let Some(cmd) = text.strip_prefix('/') {
-            match handle_slash(cmd) {
+            match handle_slash(cmd, &mut client).await {
                 SlashResult::Continue => continue,
                 SlashResult::Quit => break,
             }
@@ -205,24 +205,97 @@ enum SlashResult {
     Quit,
 }
 
-fn handle_slash(cmd: &str) -> SlashResult {
-    match cmd.split_whitespace().next().unwrap_or("") {
-        "quit" | "exit" | "q" => SlashResult::Quit,
+/// Tries to handle a slash command without needing the client (quit, clear, help, unknown).
+/// Returns `Some` if handled, `None` if the command needs async client access.
+fn handle_slash_sync(cmd: &str) -> Option<SlashResult> {
+    let verb = cmd.split_whitespace().next().unwrap_or("");
+    match verb {
+        "quit" | "exit" | "q" => Some(SlashResult::Quit),
         "clear" => {
             print!("\x1b[2J\x1b[H");
             let _ = io::stdout().flush();
-            SlashResult::Continue
+            Some(SlashResult::Continue)
         }
         "help" => {
-            eprintln!("  /quit     Exit the REPL");
-            eprintln!("  /clear    Clear screen");
-            eprintln!("  /help     Show this help");
-            SlashResult::Continue
+            eprintln!("  /quit            Exit the REPL");
+            eprintln!("  /clear           Clear screen");
+            eprintln!("  /new [title]     Start a new conversation");
+            eprintln!("  /switch <id>     Switch to an existing conversation");
+            eprintln!("  /list [--all]    List conversations (--all includes archived)");
+            eprintln!("  /close [id]      Archive conversation (default: active)");
+            eprintln!("  /help            Show this help");
+            Some(SlashResult::Continue)
         }
+        "new" | "switch" | "list" | "close" => None,
         other => {
             eprintln!("Unknown command: /{other} — type /help");
+            Some(SlashResult::Continue)
+        }
+    }
+}
+
+async fn handle_slash(cmd: &str, client: &mut OzzieClient) -> SlashResult {
+    if let Some(result) = handle_slash_sync(cmd) {
+        return result;
+    }
+    let mut parts = cmd.splitn(2, char::is_whitespace);
+    let verb = parts.next().unwrap_or("");
+    let rest = parts.next().unwrap_or("").trim();
+    match verb {
+        "new" => {
+            let title = (!rest.is_empty()).then_some(rest);
+            match client.new_conversation(title).await {
+                Ok(id) => eprintln!("\x1b[32m✓\x1b[0m new conversation: {id}"),
+                Err(e) => eprintln!("\x1b[31merror:\x1b[0m {e}"),
+            }
             SlashResult::Continue
         }
+        "switch" => {
+            if rest.is_empty() {
+                eprintln!("usage: /switch <conversation_id>");
+            } else {
+                match client.switch_conversation(rest).await {
+                    Ok(previous) => {
+                        eprintln!("\x1b[32m✓\x1b[0m switched to: {rest}");
+                        if let Some(prev) = previous {
+                            eprintln!("  (was: {prev})");
+                        }
+                    }
+                    Err(e) => eprintln!("\x1b[31merror:\x1b[0m {e}"),
+                }
+            }
+            SlashResult::Continue
+        }
+        "list" => {
+            let include_archived = rest == "--all";
+            match client.list_conversations(include_archived).await {
+                Ok(convs) => {
+                    if convs.is_empty() {
+                        eprintln!("(no conversations)");
+                    } else {
+                        for c in convs {
+                            let marker = if c.is_active { "*" } else { " " };
+                            let title = c.title.as_deref().unwrap_or("-");
+                            eprintln!(
+                                "{marker} {} [{}] {}  ({} msg)",
+                                c.id, c.status, title, c.message_count,
+                            );
+                        }
+                    }
+                }
+                Err(e) => eprintln!("\x1b[31merror:\x1b[0m {e}"),
+            }
+            SlashResult::Continue
+        }
+        "close" => {
+            let target = (!rest.is_empty()).then_some(rest);
+            match client.close_conversation(target).await {
+                Ok(id) => eprintln!("\x1b[32m✓\x1b[0m archived: {id}"),
+                Err(e) => eprintln!("\x1b[31merror:\x1b[0m {e}"),
+            }
+            SlashResult::Continue
+        }
+        _ => SlashResult::Continue,
     }
 }
 
@@ -298,19 +371,27 @@ mod tests {
 
     #[test]
     fn slash_quit() {
-        assert!(matches!(handle_slash("quit"), SlashResult::Quit));
-        assert!(matches!(handle_slash("exit"), SlashResult::Quit));
-        assert!(matches!(handle_slash("q"), SlashResult::Quit));
+        assert!(matches!(handle_slash_sync("quit"), Some(SlashResult::Quit)));
+        assert!(matches!(handle_slash_sync("exit"), Some(SlashResult::Quit)));
+        assert!(matches!(handle_slash_sync("q"), Some(SlashResult::Quit)));
     }
 
     #[test]
     fn slash_unknown() {
-        assert!(matches!(handle_slash("foobar"), SlashResult::Continue));
+        assert!(matches!(handle_slash_sync("foobar"), Some(SlashResult::Continue)));
     }
 
     #[test]
     fn slash_help() {
-        assert!(matches!(handle_slash("help"), SlashResult::Continue));
+        assert!(matches!(handle_slash_sync("help"), Some(SlashResult::Continue)));
+    }
+
+    #[test]
+    fn slash_conversation_commands_defer() {
+        assert!(handle_slash_sync("new").is_none());
+        assert!(handle_slash_sync("switch sess_x").is_none());
+        assert!(handle_slash_sync("list").is_none());
+        assert!(handle_slash_sync("close").is_none());
     }
 
     #[test]

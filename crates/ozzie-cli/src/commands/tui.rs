@@ -8,7 +8,7 @@ pub struct TuiArgs {
     #[arg(long, default_value = "http://127.0.0.1:18420")]
     pub gateway: String,
 
-    /// Session ID à reprendre.
+    /// Conversation ID à reprendre.
     #[arg(short, long)]
     pub session: Option<String>,
 

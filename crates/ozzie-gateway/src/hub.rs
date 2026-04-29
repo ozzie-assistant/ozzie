@@ -6,7 +6,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-use ozzie_core::events::{Event, EventBus, EventPayload, EventSource};
+use ozzie_core::events::EventBus;
 
 use crate::protocol::Frame;
 
@@ -15,7 +15,7 @@ type ClientId = u64;
 
 /// A connected WebSocket client.
 struct Client {
-    session_id: Option<String>,
+    conversation_id: Option<String>,
     tx: mpsc::UnboundedSender<Vec<u8>>,
 }
 
@@ -77,7 +77,7 @@ impl Hub {
             clients.insert(
                 client_id,
                 Client {
-                    session_id: None,
+                    conversation_id: None,
                     tx,
                 },
             );
@@ -115,36 +115,21 @@ impl Hub {
         }
 
         // Unregister
-        let session_id = {
+        let conversation_id = {
             let mut clients = self.clients.write().unwrap_or_else(|e| e.into_inner());
-            let session = clients.get(&client_id).and_then(|c| c.session_id.clone());
+            let session = clients.get(&client_id).and_then(|c| c.conversation_id.clone());
             clients.remove(&client_id);
             session
         };
 
         write_handle.abort();
 
-        info!(client_id, ?session_id, "client disconnected");
+        info!(client_id, ?conversation_id, "client disconnected");
 
         // Check if last client in session
-        if let Some(ref sid) = session_id {
-            let has_others = self
-                .clients
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .values()
-                .any(|c| c.session_id.as_deref() == Some(sid));
-
-            if !has_others {
-                self.bus.publish(Event::with_session(
-                    EventSource::Hub,
-                    EventPayload::SessionClosed {
-                        session_id: sid.clone(),
-                    },
-                    sid,
-                ));
-            }
-        }
+        // Conversations are no longer tied to client connections; nothing
+        // to emit when the last WebSocket client of a conversation departs.
+        let _ = conversation_id;
     }
 
     async fn handle_message(&self, client_id: ClientId, data: &[u8]) {
@@ -174,18 +159,18 @@ impl Hub {
     }
 
     /// Associates a client with a session.
-    pub fn bind_session(&self, client_id: ClientId, session_id: &str) {
+    pub fn bind_session(&self, client_id: ClientId, conversation_id: &str) {
         let mut clients = self.clients.write().unwrap_or_else(|e| e.into_inner());
         if let Some(client) = clients.get_mut(&client_id) {
-            client.session_id = Some(session_id.to_string());
+            client.conversation_id = Some(conversation_id.to_string());
         }
     }
 
     /// Broadcasts data to all clients in a session.
-    pub fn send_to_session(&self, session_id: &str, data: &[u8]) {
+    pub fn send_to_session(&self, conversation_id: &str, data: &[u8]) {
         let clients = self.clients.read().unwrap_or_else(|e| e.into_inner());
         for client in clients.values() {
-            if client.session_id.as_deref() == Some(session_id) {
+            if client.conversation_id.as_deref() == Some(conversation_id) {
                 let _ = client.tx.send(data.to_vec());
             }
         }
@@ -223,7 +208,7 @@ impl Hub {
                         serde_json::to_value(&event.payload).unwrap_or_default();
                     let frame = Frame::event(
                         event_type_str,
-                        event.session_id.as_deref(),
+                        event.conversation_id.as_deref(),
                         &payload_value,
                     );
 
@@ -231,8 +216,8 @@ impl Hub {
                         continue;
                     };
 
-                    if let Some(ref session_id) = event.session_id {
-                        self.send_to_session(session_id, &bytes);
+                    if let Some(ref conversation_id) = event.conversation_id {
+                        self.send_to_session(conversation_id, &bytes);
                     } else {
                         self.broadcast(&bytes);
                     }

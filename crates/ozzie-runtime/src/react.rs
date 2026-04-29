@@ -209,8 +209,8 @@ pub struct ReactConfig {
     pub budget: TurnBudget,
     /// Optional observer for event emission (streaming, tool calls, etc.).
     pub observer: Option<Arc<dyn ReactObserver>>,
-    /// Session ID for TOOL_CTX injection. When set, tools run with context.
-    pub session_id: Option<String>,
+    /// Conversation ID for TOOL_CTX injection. When set, tools run with context.
+    pub conversation_id: Option<String>,
     /// Working directory for TOOL_CTX.
     pub work_dir: Option<String>,
     /// Optional source for pending user messages (drained before each LLM call).
@@ -233,7 +233,7 @@ impl Default for ReactConfig {
             instruction: String::new(),
             budget: TurnBudget::default(),
             observer: None,
-            session_id: None,
+            conversation_id: None,
             work_dir: None,
             pending_source: None,
             cancel_token: None,
@@ -494,7 +494,7 @@ impl ReactLoop {
                 let result = execute_tool_call(
                     &tool_map,
                     tc,
-                    config.session_id.as_deref(),
+                    config.conversation_id.as_deref(),
                     config.work_dir.as_deref(),
                     config.observer.as_ref(),
                     config.git_auto_commit,
@@ -539,7 +539,7 @@ impl ReactLoop {
 async fn execute_tool_call(
     tool_map: &HashMap<String, &Arc<dyn Tool>>,
     tc: &ToolCall,
-    session_id: Option<&str>,
+    conversation_id: Option<&str>,
     work_dir: Option<&str>,
     observer: Option<&Arc<dyn ReactObserver>>,
     git_auto_commit: bool,
@@ -550,13 +550,13 @@ async fn execute_tool_call(
             let tool = Arc::clone(tool);
             let args_str = tc.arguments.to_string();
 
-            if let Some(sid) = session_id {
+            if let Some(sid) = conversation_id {
                 // Build progress sender from observer
                 let progress: Option<ProgressSender> =
                     observer.and_then(|obs| obs.progress_sender());
 
                 let ctx = ToolContext {
-                    session_id: sid.to_string(),
+                    conversation_id: sid.to_string(),
                     work_dir: work_dir.map(|s| s.to_string()),
                     progress,
                     git_auto_commit,

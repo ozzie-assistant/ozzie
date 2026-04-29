@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
     #[allow(dead_code)]
-    SessionReady(String),
+    ConversationReady(String),
     AssistantDelta(String),
     AssistantDone,
     ToolStart { call_id: String, tool: String, args: String },
@@ -163,9 +163,7 @@ fn translate_frame(frame: &ozzie_client::Frame) -> Option<ServerEvent> {
                     options: prompt.options,
                 })
             }
-            Some(EventKind::AgentYielded) | Some(EventKind::SessionClosed) => {
-                Some(ServerEvent::AgentDone)
-            }
+            Some(EventKind::AgentYielded) => Some(ServerEvent::AgentDone),
             Some(EventKind::AgentCancelled) => {
                 let reason = frame
                     .params

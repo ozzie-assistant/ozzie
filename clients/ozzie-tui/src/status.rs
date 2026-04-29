@@ -6,7 +6,7 @@ use ratatui::{
 
 /// Barre de statut d'une ligne affichée tout en bas.
 pub struct StatusLine {
-    pub session_id: String,
+    pub conversation_id: String,
     pub agent_running: bool,
     pub active_tool: Option<String>,
 }
@@ -15,9 +15,9 @@ impl StatusLine {
     pub fn render(&self) -> Paragraph<'static> {
         let mut spans: Vec<Span<'static>> = Vec::new();
 
-        // Session ID
+        // Conversation ID
         spans.push(Span::styled(
-            format!(" [{}] ", self.session_id),
+            format!(" [{}] ", self.conversation_id),
             Style::default().fg(Color::DarkGray),
         ));
 

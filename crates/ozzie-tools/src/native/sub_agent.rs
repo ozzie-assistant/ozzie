@@ -81,11 +81,11 @@ impl Tool for SubAgentTool {
             ));
         }
 
-        let session_id = TOOL_CTX
-            .try_with(|ctx| ctx.session_id.clone())
+        let conversation_id = TOOL_CTX
+            .try_with(|ctx| ctx.conversation_id.clone())
             .unwrap_or_default();
 
-        if session_id.is_empty() {
+        if conversation_id.is_empty() {
             return Err(ToolError::Execution(
                 "sub-agent requires a session context".into(),
             ));
@@ -102,7 +102,7 @@ impl Tool for SubAgentTool {
                 &self.config,
                 &input.task,
                 input.context.as_deref(),
-                &session_id,
+                &conversation_id,
                 work_dir.as_deref(),
             )
             .await
